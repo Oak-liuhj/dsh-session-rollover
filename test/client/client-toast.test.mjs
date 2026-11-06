@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import vm from 'node:vm';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(join(here, '..', 'client.js'), 'utf8');
+const source = readFileSync(join(here, '..', '..', 'client.js'), 'utf8');
 
 function makeDoc() {
   const make = (tag) => {

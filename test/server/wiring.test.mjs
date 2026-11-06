@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import Plugin from '../index.js';
+import Plugin from '../../index.js';
 
 function createCtx({ turns = 10, todos }) {
   const events = Array.from({ length: turns }, (_, i) => ({ kind: 'user/message', text: i === 0 ? '把网关重构成可灰度路由，不许加第三方依赖' : `第 ${i + 1} 轮：继续做路由` }));
@@ -18,6 +18,8 @@ function createCtx({ turns = 10, todos }) {
   const calls = { rename: [], prompt: [], create: 0, events: [] };
   let seq = 0;
   const ctx = {
+    provide: (name, service) => { ctx[name] = service; },
+    workspaceRegistry: {list: () => []},
     sessions: { get: (id) => sessions.get(id) ?? null, list: () => [...sessions.values()] },
     sessionTitle: {
       get: (s) => (s.title ? { title: s.title } : undefined),
@@ -42,6 +44,66 @@ const TODOS = [
   { content: '网关路由', status: 'in_progress' },
   { content: '回归测试', status: 'pending' },
 ];
+
+for (const withWorkspace of [true, false]) {
+  test(`接线：新卷继承${withWorkspace ? '工作区' : '工作目录'}，并在注入前继承模型`, async () => {
+    const {ctx, calls} = createCtx({turns: 1, todos: TODOS});
+    const cwd = 'D:/work/rollover-fixture';
+    ctx.workspaceRegistry.list = () => withWorkspace ? [{id: 'workspace-1', sessionIds: ['s1']}] : [];
+    ctx.sessionProjections.stateOf = (_session, name) => name === 'workingDirectory'
+      ? cwd : {pending: {provider: 'fixture-provider', model: 'fixture-model', reasoningEffort: 'high'}};
+    const create = ctx.sessionController.create;
+    ctx.sessionController.create = async (options) => {
+      calls.createOptions = options;
+      return create(options);
+    };
+    const sequence = [];
+    ctx.sessionController.selectModel = async (selection) => {
+      sequence.push('model');
+      calls.model = selection;
+    };
+    const prompt = ctx.sessionController.prompt;
+    ctx.sessionController.prompt = async (request, signal) => {
+      sequence.push('prompt');
+      assert.equal(signal.aborted, false);
+      return prompt(request, signal);
+    };
+    new Plugin(ctx, {dataDir: mkdtempSync(join(tmpdir(), 'rollover-inherit-')), mode: 'manual'});
+    const result = await ctx.sessionRollover.rollover('s1');
+    assert.equal(result.status, 'rolled-over');
+    assert.deepEqual(calls.createOptions, withWorkspace ? {workspaceId: 'workspace-1'} : {cwd});
+    assert.deepEqual(calls.model, {
+      sessionId: result.newSessionId, provider: 'fixture-provider',
+      model: 'fixture-model', reasoningEffort: 'high',
+    });
+    assert.deepEqual(sequence, ['model', 'prompt']);
+  });
+}
+
+test('接线：新卷明确清空待办后，下一次手动交接不恢复继承清单', async () => {
+  const {ctx, sessions} = createCtx({turns: 1, todos: TODOS});
+  const plugin = new Plugin(ctx, {dataDir: mkdtempSync(join(tmpdir(), 'rollover-cleared-')), mode: 'manual'});
+  const first = await ctx.sessionRollover.rollover('s1');
+  assert.equal(first.status, 'rolled-over');
+  sessions.get(first.newSessionId).events.push({type: 'todo/write', data: {todos: []}});
+  const second = await ctx.sessionRollover.rollover(first.newSessionId);
+  assert.equal(second.status, 'rolled-over');
+  assert.deepEqual(plugin.state.handoffGet(second.newSessionId).todos, []);
+});
+
+test('manual shared service retains inherited todos through a second handoff and keeps the parent chain', async () => {
+  const {ctx, sessions} = createCtx({turns: 1, todos: TODOS});
+  const plugin = new Plugin(ctx, {dataDir: mkdtempSync(join(tmpdir(), 'rollover-manual-')), mode: 'manual'});
+  const first = await ctx.sessionRollover.rollover('s1');
+  assert.equal(first.status, 'rolled-over');
+  assert.equal(plugin.handoffInfo(first.newSessionId).source.sessionId, 's1');
+  const second = await ctx.sessionRollover.rollover(first.newSessionId);
+  assert.equal(second.status, 'rolled-over');
+  const snapshot = plugin.state.handoffGet(second.newSessionId);
+  assert.deepEqual(snapshot.todos, TODOS);
+  assert.equal(plugin.index.get(first.newSessionId).parent_session_id, 's1');
+  assert.equal(plugin.index.get(second.newSessionId).parent_session_id, first.newSessionId);
+});
 
 test('接线：10 轮 + 无 in-flight → 建未定名会话、注入、旧卷 -1、新卷 -2、索引落盘', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'rollover-wire-'));

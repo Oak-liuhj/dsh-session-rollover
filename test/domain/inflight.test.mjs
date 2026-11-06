@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openToolCalls, callIdOf } from '../src/inflight.mjs';
+import { openToolCalls, callIdOf } from '../../src/domain/inflight.mjs';
 
 // 真机事件形状（session.v4）：tool/call 用 data.callId，tool/result 用 data.toolCallId
 test('in-flight：真机 tool/result 形状能收尾（回归：曾把 10 次 todo_write 全算未完成）', () => {

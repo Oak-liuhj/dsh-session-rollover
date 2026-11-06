@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createNoticeStore, NOTICE_FILE } from '../src/notices.mjs';
+import { createNoticeStore, NOTICE_FILE } from '../../src/storage/notices.mjs';
 
 const dirOf = (tag) => mkdtempSync(join(tmpdir(), `rollover-notice-${tag}-`));
 

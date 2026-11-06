@@ -1,12 +1,15 @@
-// S5 / S10 / S11 夹具真跑，不靠纸面断言。宿主用接口等价的内存实现，事务走真 src/assembly.mjs。
+// S5 / S10 / S11 夹具真跑，不靠纸面断言。宿主用接口等价的内存实现，事务走真 application/rollover.mjs。
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { performRollover, createRolloverState, eventsToMessages, PENDING_FILE, readonlyFileOf } from '../src/assembly.mjs';
-import { createClusterIndex, attachFilePersistence } from '../src/cluster.mjs';
-import { planVolumeTitles } from '../src/naming.mjs';
+import {performRollover} from '../../src/application/rollover.mjs';
+import {eventsToMessages} from '../../src/application/handoff-message.mjs';
+import {createRolloverState, PENDING_FILE, readonlyFileOf} from '../../src/storage/rollover-state.mjs';
+import {createClusterIndex} from '../../src/domain/cluster-index.mjs';
+import {attachFilePersistence} from '../../src/storage/index-store.mjs';
+import { planVolumeTitles } from '../../src/domain/naming.mjs';
 
 const NOW = () => '2026-11-05T12:00:00.000Z';
 
@@ -76,6 +79,49 @@ const SUMMARY = [
   ['在跑任务', '无'],
   ['改动文件', 'src/gateway.mjs'],
 ];
+
+test('manual handoff below threshold works in manual/off modes and persists exact original todos', async () => {
+  for (const mode of ['manual', 'off']) {
+    const host = createFixtureHost({turns: 1});
+    const setupState = setup();
+    const result = await performRollover({...setupState, host, sessionId: 's-old', manual: true,
+      config: {mode, threshold: 10}, summarySegments: SUMMARY});
+    assert.equal(result.status, 'rolled-over');
+    assert.equal(result.reason, 'manual');
+    const snapshot = setupState.state.handoffGet(result.newSessionId);
+    assert.equal(snapshot.from_session_id, 's-old');
+    assert.equal(snapshot.todos[2].status, 'in_progress');
+  }
+});
+
+test('manual handoff at -9 creates an independent continuation; automatic remains capped', async () => {
+  const host = createFixtureHost({title: '网关重构-9'});
+  const env = setup();
+  const auto = await performRollover({...env, host, sessionId: 's-old', summarySegments: SUMMARY});
+  assert.equal(auto.reason, 'cluster-cap');
+  assert.equal(host.titles.size, 1);
+  const manual = await performRollover({...env, host, sessionId: 's-old', manual: true, summarySegments: SUMMARY});
+  assert.equal(manual.status, 'rolled-over');
+  assert.match(manual.to.title, /接续 1/);
+  assert.equal(host.titles.get('s-old'), '网关重构-9');
+  assert.equal(env.state.isReadonly('s-old'), false);
+  assert.equal(env.index.get(manual.newSessionId).parent_session_id, 's-old');
+});
+
+test('manual handoff still rejects in-flight tools before creating a session', async () => {
+  const host = createFixtureHost({turns: 1, inFlight: [{name: 'shell'}]});
+  const result = await performRollover({...setup(), host, sessionId: 's-old', manual: true, summarySegments: SUMMARY});
+  assert.equal(result.reason, 'unsafe-cut-point');
+  assert.equal(host.titles.size, 1);
+});
+
+test('the complete injected message, including the JSON snapshot, obeys the byte budget before creation', async () => {
+  const host = createFixtureHost({turns: 1});
+  const result = await performRollover({...setup(), host, sessionId: 's-old', manual: true,
+    summarySegments: [['目标', 'a'.repeat(9000)]]});
+  assert.equal(result.reason, 'oversize');
+  assert.equal(host.titles.size, 1);
+});
 
 test('S10：预建同名 -1 时旧卷递增到第一空位、新卷接下一个空位、全簇标题唯一', async () => {
   const host = createFixtureHost({

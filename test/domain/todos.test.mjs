@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { lastTodos, activeIndex } from '../src/todos.mjs';
+import { lastTodos, activeIndex } from '../../src/domain/todos.mjs';
 
 const T = (s) => [{ content: 'a', status: s }, { content: 'b', status: 'pending' }];
 
