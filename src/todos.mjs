@@ -4,20 +4,20 @@
 // 判定/交接要的是「上一轮结束时的清单」，日志最后一条 todo/write 才是它。
 
 function typeOf(e) {
-  return e?.type ?? e?.kind;
+    return e?.type ?? e?.kind;
 }
 
 export function lastTodos(events = []) {
-  let last = null;
-  for (const e of events) {
-    if (typeOf(e) !== 'todo/write') continue;
-    const todos = e?.data?.todos;
-    if (Array.isArray(todos)) last = todos;
-  }
-  return last ?? [];
+    let last = null;
+    for (const e of events) {
+        if (typeOf(e) !== 'todo/write') continue;
+        const todos = e?.data?.todos;
+        if (Array.isArray(todos)) last = todos;
+    }
+    return last ?? [];
 }
 
 export function activeIndex(todos = []) {
-  const i = todos.findIndex((t) => t?.status === 'in_progress');
-  return i < 0 ? null : i + 1;
+    const i = todos.findIndex((t) => t?.status === 'in_progress');
+    return i < 0 ? null : i + 1;
 }

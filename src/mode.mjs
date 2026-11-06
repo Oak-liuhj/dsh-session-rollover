@@ -3,7 +3,7 @@
 export const SEGMENT_MARKER = /\[(?:Checkpoint \d+|Handoff(?: · part)? \d+)\]/;
 
 export function markersFound(messages) {
-  return messages.some((m) => m && typeof m.text === 'string' && SEGMENT_MARKER.test(m.text));
+    return messages.some((m) => m && typeof m.text === 'string' && SEGMENT_MARKER.test(m.text));
 }
 
 /**
@@ -12,9 +12,9 @@ export function markersFound(messages) {
  * @returns {{mode:'auto'|'manual'|'off', downgraded:boolean}}
  */
 export function effectiveRolloverMode(configured = 'auto', opts = {}) {
-  if (configured === 'off') return { mode: 'off', downgraded: false };
-  if (configured === 'manual') return { mode: 'manual', downgraded: false };
-  if (opts.forceAuto) return { mode: 'auto', downgraded: false };
-  if (opts.hasMarkers) return { mode: 'manual', downgraded: true }; // 自动降 manual
-  return { mode: 'auto', downgraded: false };
+    if (configured === 'off') return {mode: 'off', downgraded: false};
+    if (configured === 'manual') return {mode: 'manual', downgraded: false};
+    if (opts.forceAuto) return {mode: 'auto', downgraded: false};
+    if (opts.hasMarkers) return {mode: 'manual', downgraded: true}; // 自动降 manual
+    return {mode: 'auto', downgraded: false};
 }

@@ -9,15 +9,28 @@
     "./client": "./client.js",
     "./src/*": "./src/*"
   },
-  "files": ["index.js", "client.js", "src/", "cordis.patch.yml", "README.md"],
+  "files": [
+    "index.js",
+    "client.js",
+    "src/",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "scripts": {
     "test": "node test/core.test.mjs && node test/assembly.test.mjs && node test/wiring.test.mjs && node test/inflight.test.mjs && node test/todos.test.mjs && node test/notices.test.mjs && node test/client-toast.test.mjs"
   },
   "dsh": {
     "manifestVersion": 1,
     "verifiedDsh": "0.2.1-rc.5",
-    "bundle": { "patch": "./cordis.patch.yml" },
-    "client": { "platform": "web" }
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
   },
-  "dsBot": { "min": "0.2.6", "verified": "0.2.6" }
+  "dsBot": {
+    "min": "0.2.6",
+    "verified": "0.2.6"
+  }
 }
