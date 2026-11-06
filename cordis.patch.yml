@@ -1,0 +1,9 @@
+﻿# dsh-session-rollover · 宿主挂载补丁（insert 一条 server 插件；不 disabled 任何宿主组件，不改宿主代码）
+# 配置说明：rollover.mode = auto|manual|off；threshold = 轮次阈值（默认 10）；
+# dataDir 留空 → 自动落到 <DSH_HOME>/plugin-data/dsh-session-rollover（与桌面 .dsh 隔离，升级不重置）。
+- insert:
+    - id: session-rollover
+      name: '@deepseek-ai/dsh-session-rollover'
+      config:
+        mode: auto
+        threshold: 10

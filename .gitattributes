@@ -1,0 +1,7 @@
+# normalize line endings so the repo is byte-identical on every platform
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.tgz binary
+*.zip binary

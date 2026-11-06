@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# build / release artifacts
+*.tgz
+*.zip
+dist/
+out/
+
+# local env and secrets
+.env
+.env.*
+*.local
+*.pem
+
+# plugin runtime data (cluster index, logs) never belongs in the repo
+plugin-data/
+*.log
+*.log.jsonl
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
