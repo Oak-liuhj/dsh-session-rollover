@@ -1,8 +1,12 @@
 # dsh-session-rollover
 
-DeepSeek Harness 会话分卷与进度续接插件，当前版本 **1.1.0**。达到用户消息阈值后，在安全切点创建新卷、注入完整交接快照，保留旧卷供只读回溯。与 R2 `dsh-todo-progress` 共用待办来源，不另建一套任务状态。
+DeepSeek Harness 会话分卷与进度续接插件，当前版本 **1.1.1**。达到用户消息阈值后，在安全切点创建新卷、注入完整交接快照，保留旧卷供只读回溯。与 R2 `dsh-todo-progress` 共用待办来源，不另建一套任务状态。
 
-零第三方运行时依赖，通过宿主公开服务和 UI 插槽接入；用于内部安装，不发布到公共 npm。宿主兼容元数据见 [package.json](./package.json)，本轮验证范围见 [R3 修复与验证记录](./docs/r3-validation.md)。
+零第三方运行时依赖，通过宿主公开服务和 UI 插槽接入；公开包名为 `dsh-session-rollover`，支持 GitHub / 本地压缩包安装；npm 发布可选。宿主兼容元数据见 [package.json](./package.json)，本轮验证范围见 [R3 修复与验证记录](./docs/r3-validation.md)。
+
+![会话分卷与续接](./assets/icon.png)
+
+[使用说明](./docs/DETAIL.zh-CN.md) · [English](./docs/DETAIL.md) · [发布指南](./docs/PUBLISHING.md) · [更新记录](./CHANGELOG.md)
 
 ## 主要行为
 
@@ -17,7 +21,7 @@ DeepSeek Harness 会话分卷与进度续接插件，当前版本 **1.1.0**。�
 
 ## 界面
 
-会话标题栏展示本卷用户轮数、阈值、真实卷序、来源与归档状态；`⋯` 提供“现在换会话”“新建独立会话”。列表使用宿主 trailing 徽标槽，旧宿主自动回退到 leading 槽。
+会话标题栏展示本卷用户轮数、阈值、真实卷序、来源与归档状态；`⋯` 提供“现在换会话”“新建独立会话”和“使用说明”。列表使用宿主 trailing 徽标槽，旧宿主自动回退到 leading 槽。
 
 新卷首条消息渲染接续摘要卡，默认三行预览，可展开全部、独立展开 JSON、复制原始快照、跳转上一卷。交接卡始终保留切卷时的历史，右侧 R2 面板显示后续实时进度；回看旧卷不会被反复跳回新卷。宿主缺少 `userText` 扩展时，摘要回退到输入区域上方。
 
@@ -27,18 +31,17 @@ DeepSeek Harness 会话分卷与进度续接插件，当前版本 **1.1.0**。�
 
 ## 安装与卸载
 
-需要可用的 DSH 宿主。源码安装前构建浏览器入口：
+需要可用的 DSH 宿主，已验证版本为 `0.2.1-rc.5`。本插件不需要额外 API Key，继续对话使用宿主已有模型设置。右侧实时任务面板由可选的 [dsh-todo-progress](https://github.com/Oak-liuhj/dsh-todo-progress) 提供。
+
+浏览器入口已预构建，安装时无需构建。建议从插件市场或桌面插件管理器安装；市场尚未收录时可使用 GitHub 源或本地包：
 
 ```powershell
-npm run build
-dsh plugin --profile <name> add .
+dsh plugin --profile <name> add github:Oak-liuhj/dsh-session-rollover
+# 或：dsh plugin --profile <name> add D:/release/dsh-session-rollover-1.1.1.tgz
+# 卸载：dsh plugin --profile <name> remove dsh-session-rollover
 ```
 
-也可安装 `npm pack` 生成的压缩包；`prepack` 会自动构建。
-
-```powershell
-dsh plugin --profile <name> remove @deepseek-ai/dsh-session-rollover
-```
+桌面安装请选择实际的 `desktop` profile，完成后通过桌面客户端重启宿主。旧 scoped 包 `@deepseek-ai/dsh-session-rollover` 必须先移除或在同次依赖变更中替换，且只保留一条新包 bundle / `session-rollover` 配置，避免双重注册。升级前备份 profile 配置和数据；公开包更名不改变数据目录、服务名或旧 `src/*` 接口。详见 [发布与升级指南](./docs/PUBLISHING.md)。
 
 卸载保留独立插件数据；复装可继续读取。数据目录不应位于代码仓库或安装包目录。
 
@@ -49,7 +52,7 @@ dsh plugin --profile <name> remove @deepseek-ai/dsh-session-rollover
 ```yaml
 - insert:
     - id: session-rollover
-      name: '@deepseek-ai/dsh-session-rollover'
+      name: 'dsh-session-rollover'
       config:
         mode: auto
         threshold: 10
@@ -135,7 +138,7 @@ docs/r3-demo.html               固定数据交互原型
 
 ## 开发与验证
 
-本轮使用 Node.js 24.22.1、npm 11.19.1，无需安装第三方依赖。
+开发验证使用 Node.js 24.22.1、npm 11.19.1，无需安装第三方依赖。
 
 ```powershell
 npm test
@@ -160,4 +163,4 @@ npm pack --pack-destination <输出目录>
 
 ## 许可证
 
-[Apache-2.0](./LICENSE)；上游 MIT 版权声明保留于 [LICENSE.upstream](./LICENSE.upstream)。
+本项目采用 [Apache-2.0](./LICENSE)，包含 Fei2411 的 [MIT 上游贡献](./LICENSE.upstream)；分发时须同时保留两份许可证及 [NOTICE](./NOTICE)。SPDX：`(Apache-2.0 AND MIT)`。

@@ -1,29 +1,56 @@
 {
-  "name": "@deepseek-ai/dsh-session-rollover",
-  "version": "1.1.0",
+  "name": "dsh-session-rollover",
+  "version": "1.1.1",
   "type": "module",
-  "description": "会话分卷接续：轮次计数/八段交接/-N 命名/簇索引/只读回溯（契约 v0.2，旁挂不改宿主）",
+  "description": "DSH 会话分卷与续接：自动分卷、待办交接快照、来源回溯和归档只读，支持 Web 与桌面客户端。",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
-    "./src/*": "./src/*"
+    "./src/*": "./src/*",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./assets/icon.png"
   },
   "files": [
     "index.js",
     "client.js",
     "src/",
     "scripts/",
+    "assets/",
+    "locale/",
+    "screenshots.json",
     "cordis.patch.yml",
     "README.md",
-    "docs/"
+    "CHANGELOG.md",
+    "NOTICE",
+    "LICENSE",
+    "LICENSE.upstream",
+    "docs/DETAIL.md",
+    "docs/DETAIL.zh-CN.md",
+    "docs/PUBLISHING.md",
+    "docs/architecture.md",
+    "docs/r3-validation.md",
+    "docs/marketplace-validation.md",
+    "docs/screenshots/host-rollover.png",
+    "docs/screenshots/host-archived.png",
+    "docs/screenshots/host-dark.png",
+    "docs/screenshots/help-light.png",
+    "docs/screenshots/help-dark.png",
+    "marketplace/",
+    "docs/r3-demo.html",
+    "docs/screenshots/prototype-fixed.png",
+    "docs/live-host-validation.json",
+    "docs/prototype-validation.json"
   ],
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "build:check": "node scripts/build-client.mjs --check",
     "pretest": "npm run build",
-    "prepack": "npm run build",
-    "test": "node --test \"test/**/*.test.mjs\""
+    "prepack": "npm run build && node scripts/check-release.mjs",
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "check:release": "npm run build:check && node scripts/check-release.mjs"
   },
   "dsh": {
     "manifestVersion": 1,
@@ -33,11 +60,40 @@
     },
     "client": {
       "platform": "web",
-      "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-workspace"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
     }
   },
   "dsBot": {
     "min": "0.2.6",
     "verified": "0.2.6"
+  },
+  "license": "(Apache-2.0 AND MIT)",
+  "author": "Oak-liuhj",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Oak-liuhj/dsh-session-rollover.git"
+  },
+  "homepage": "https://github.com/Oak-liuhj/dsh-session-rollover#readme",
+  "bugs": {
+    "url": "https://github.com/Oak-liuhj/dsh-session-rollover/issues"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "dsh",
+    "session",
+    "rollover",
+    "handoff",
+    "productivity"
+  ],
+  "icon": "assets/icon.png",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "dsh": "0.2.1-rc.5"
   }
 }

@@ -87,6 +87,7 @@ export function createRolloverUI(React) {
         const [busy, setBusy] = useState(false);
         const [error, setError] = useState('');
         const dialog = useRef(null);
+        const [showHelp, setShowHelp] = useState(false);
         const action = async type => {
             setBusy(true); setError('');
             try {
@@ -103,9 +104,24 @@ export function createRolloverUI(React) {
             info.sealed ? h('span', {className: 'dsr-chip'}, info.readonly ? '归档只读' : '归档 · 已恢复写入') : null,
             info.source ? h('span', {className: 'dsr-source'}, h(Source, {source: info.source}),
                 info.previousTurnCount != null ? ` · 第 ${info.previousTurnCount} 轮` : '') : null,
-            h('button', {type: 'button', 'aria-label': '会话分卷操作', onClick: () => dialog.current?.showModal()}, '⋯'),
+            h('button', {type: 'button', 'aria-label': '会话分卷操作', onClick: () => { setShowHelp(false); dialog.current?.showModal(); }}, '⋯'),
             h('dialog', {ref: dialog, className: 'dsr-actions', 'aria-label': '会话操作'},
+                showHelp ? h('section', {className: 'dsr-help', 'aria-label': '会话分卷使用说明'},
+                    h('h3', null, '会话分卷与续接 · 使用说明'),
+                    h('p', null, '长会话达到阈值后，在本轮执行结束且没有未完成工具调用或压缩时创建下一卷。默认每 10 条真实用户消息分卷，同一系列最多 9 卷。系统上下文和交接消息不计数。'),
+                    h('h4', null, '从哪里开始'),
+                    h('p', null, '标题栏查看本卷轮数、阈值和卷序。菜单中的“现在换会话”可提前交接；“新建独立会话”会携带快照另开一个系列。操作需等待当前执行结束。'),
+                    h('h4', null, '交接卡与任务进度'),
+                    h('p', null, '新卷首条接续摘要保留切卷时的待办、当前步骤、约束、文件线索及后台任务状态。可展开摘要、查看或复制完整 JSON，并点击来源回看上一卷。右侧实时任务进度由可选的 dsh-todo-progress 插件提供，历史快照不会随任务进度变化。'),
+                    h('h4', null, '回看与恢复写入'),
+                    h('p', null, '旧卷默认归档只读，可在输入区域上方切换“允许再次写入 / 恢复只读”。开关会保存；恢复写入不会让旧卷再次自动分卷。达到 9 卷后请新建独立会话。'),
+                    h('h4', null, '配置与数据'),
+                    h('p', null, '在宿主插件配置中调整 mode（auto / manual / off）、threshold 和 dataDir。manual 达阈值只提示，off 关闭自动判定；显式手动操作仍可使用。数据默认存于 DSH_HOME/plugin-data/dsh-session-rollover，卸载不会清除。'),
+                    h('h4', null, '能力边界'),
+                    h('p', null, '摘要为确定性摘录，不额外调用模型；继续对话使用 DSH 已配置的模型，无需额外 API Key。后台任务仅记录句柄和状态，不迁移或重启进程。摘要或存储异常会提示，复杂内容超预算时可能无法交接。'),
+                    h('p', {className: 'dsr-help-credit'}, 'dsh-session-rollover · Oak-liuhj · 保留 Fei2411 上游贡献；Apache-2.0 AND MIT。')) : null,
                 h('div', {className: 'dsr-actions-body'},
+                    h('button', {type: 'button', 'aria-expanded': showHelp, onClick: () => setShowHelp(!showHelp)}, showHelp ? '收起使用说明' : '使用说明'),
                     h('button', {type: 'button', disabled: busy || info.sealed || !navigate, onClick: () => action('rollover')}, '现在换会话'),
                     h('button', {type: 'button', disabled: busy || !navigate, onClick: () => action('new')}, '新建独立会话'),
                     h('button', {type: 'button', onClick: () => dialog.current?.close()}, '关闭'))),
@@ -260,6 +276,8 @@ body[data-ds-dark-theme] :is(.dsr-header,.dsr-dock,.dsr-card,.dsr-row-badges),ht
 .dsr-card{display:block;flex:0 0 auto;min-width:0;max-width:100%;border:1px solid var(--dsr-line);border-radius:10px;background:var(--dsr-bg);overflow-wrap:anywhere;white-space:normal;margin:8px 0}.dsr-card-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px;background:var(--dsr-weak);border-radius:10px 10px 0 0;padding:10px 12px}.dsr-card-preview{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;margin:10px 12px;white-space:pre-wrap}.dsr-card-content{display:block}.dsr-section{padding:8px 12px;border-top:1px solid var(--dsr-line)}.dsr-section h4{font-size:12px;line-height:20px;color:var(--dsr-muted);margin:0 0 4px;font-weight:500}.dsr-prewrap{white-space:pre-wrap}.dsr-expand{margin:0 4px 6px}.dsr-json-controls{display:flex;gap:8px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--dsr-line)}.dsr-json{font:12px/18px Consolas,monospace;max-height:240px;overflow:auto;background:var(--dsr-weak);padding:10px;margin:0 12px 12px;white-space:pre-wrap;overflow-wrap:anywhere}.dsr-row-badges{display:inline-flex;gap:3px;font-size:10px;white-space:nowrap}.dsr-row-badges span{background:var(--dsr-weak);padding:0 4px;border-radius:4px}
 .dsr-actions{border:1px solid var(--dsr-line);border-radius:10px;background:var(--dsr-bg);color:var(--dsr-fg);max-width:calc(100vw - 32px)}.dsr-actions::backdrop{background:rgba(0,0,0,.25)}.dsr-actions-body{display:flex;gap:6px;flex-wrap:wrap;padding:6px 0}.dsr-header :focus-visible,.dsr-dock :focus-visible,.dsr-card :focus-visible{outline:2px solid var(--dsr-accent);outline-offset:2px}.dsr-card [role=status]{padding:4px 12px;color:var(--dsr-muted)}
 .dsr-row-compact{flex-direction:column;align-items:center;justify-content:center;gap:0;width:20px;max-width:20px;font-size:9px;line-height:11px}.dsr-row-compact span{padding:0 1px}
+.dsr-actions:has(.dsr-help){width:560px;max-height:calc(100dvh - 48px);overflow:auto}.dsr-help{max-width:100%;line-height:1.7;overflow-wrap:anywhere}.dsr-help h3{margin:4px 0 12px;font-size:17px}.dsr-help h4{margin:14px 0 4px;font-size:13px}.dsr-help p{margin:4px 0 10px}.dsr-help-credit{font-size:11px;color:var(--dsr-muted)}
+@media(max-width:600px){.dsr-header{gap:3px;flex-wrap:nowrap;max-width:calc(100vw - 156px)}.dsr-header>.dsr-chip,.dsr-header>.dsr-source{display:none}.dsr-header>.dsr-chip:first-child{display:inline-flex;font-size:10px;padding:1px 3px}}
 @media(prefers-reduced-motion:reduce){.dsr-card *{animation:none!important;transition:none!important}}
 `;
     return {apply, Header, Dock, Card, Badges, useInfo, parseHandoff, publish, blockComposer, CSS};

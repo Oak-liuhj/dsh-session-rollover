@@ -1,7 +1,7 @@
 // 从包公开子路径导入，验证重构后原有消费者仍能获得同一份导出。
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import Plugin, {SessionRolloverPlugin} from '@deepseek-ai/dsh-session-rollover';
+import Plugin, {SessionRolloverPlugin} from 'dsh-session-rollover';
 import Implementation from '../../src/server/plugin.mjs';
 
 test('包主入口保留默认与具名插件类导出', () => {
@@ -24,9 +24,9 @@ const legacyModules = {
 
 for (const [legacy, targets] of Object.entries(legacyModules)) {
     test(`旧子路径 src/${legacy}.mjs 保持导出兼容`, async () => {
-        const actual = await import(`@deepseek-ai/dsh-session-rollover/src/${legacy}.mjs`);
+        const actual = await import(`dsh-session-rollover/src/${legacy}.mjs`);
         const expected = Object.assign({}, ...await Promise.all(targets.map(
-            (target) => import(`@deepseek-ai/dsh-session-rollover/src/${target}.mjs`),
+            (target) => import(`dsh-session-rollover/src/${target}.mjs`),
         )));
         assert.deepEqual(Object.keys(actual).sort(), Object.keys(expected).sort());
         for (const name of Object.keys(expected)) assert.equal(actual[name], expected[name], name);

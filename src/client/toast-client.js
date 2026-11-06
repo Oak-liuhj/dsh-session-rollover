@@ -6,8 +6,8 @@
 (function () {
     if (typeof window === 'undefined' || !window.__ModuleLoader__) return;
     window.__ModuleLoader__.load({
-        // 必须与 dsh.client 条目的 id 逐字一致（包名全称）；task-panel 是非 scope 包所以看起来同名。
-        id: '@deepseek-ai/dsh-session-rollover',
+        // 必须与 dsh.client 条目的 id 逐字一致，使用公开包名。
+        id: 'dsh-session-rollover',
         factory: function (require) {
             var module = {exports: {}};
             var NS = 'dsh-session-rollover';
