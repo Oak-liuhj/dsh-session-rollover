@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSH R3 优化验证版 · R2 右侧栏任务进度面板 / R3 会话分卷接续</title>
+<style>
+/* ============ 设计 token：取自 DSH Web GUI 实测值（dsh-web-frontend dist / TodoPanel.module.css / boot 样式） ============ */
+:root{
+  --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --font-code:"SF Mono","JetBrains Mono","Fira Code",Consolas,"Liberation Mono",Menlo,Courier,"PingFang SC","Microsoft YaHei",monospace;
+  --bg:#f7f8fa; --bg-side:#f2f3f5; --card:#ffffff; --card-2:#fafbfc;
+  --ink:#0f1115; --ink-2:#61666b; --ink-3:#6b7076;
+  --line:rgba(0,0,0,.10); --line-2:rgba(0,0,0,.06);
+  --accent:#4d6bfe; --accent-weak:rgba(77,107,254,.09); --accent-weak-2:rgba(77,107,254,.16);
+  --ok:#189a5d; --ok-weak:rgba(24,154,93,.10);
+  --warn:#b25e09; --warn-weak:rgba(178,94,9,.10);
+  --bad:#cf3038; --bad-weak:rgba(207,48,56,.09);
+  /* 文本安全色：小字号（≤12.5px）文字专用，保证 AA 4.5:1；填充/描边仍用上面的品牌色 */
+  --ink-3-txt:#6b7076; --accent-txt:#3d56d6; --ok-txt:#127a4a; --warn-txt:#a3540a;
+  --menu-bg:rgba(255,255,255,.88); --menu-blur:saturate(1.4) blur(14px);
+  --elev:0 2px 12px rgba(15,17,21,.07),0 0 .5px rgba(15,17,21,.18);
+  --r-sm:6px; --r-md:8px; --r-lg:10px; --r-xl:14px;
+}
+html[data-theme="dark"]{
+  --bg:#0f1115; --bg-side:#15171c; --card:#171a1f; --card-2:#1c1f25;
+  --ink:#f9fafb; --ink-2:#cfd3d6; --ink-3:#adb2b8;
+  --line:rgba(255,255,255,.12); --line-2:rgba(255,255,255,.07);
+  --accent:#6b85ff; --accent-weak:rgba(107,133,255,.13); --accent-weak-2:rgba(107,133,255,.22);
+  --ok:#3ecf8e; --ok-weak:rgba(62,207,142,.12);
+  --warn:#e3a354; --warn-weak:rgba(227,163,84,.13);
+  --bad:#f2727b; --bad-weak:rgba(242,114,123,.12);
+  --ink-3-txt:#adb2b8; --accent-txt:#95a8ff; --ok-txt:#5cd9a3; --warn-txt:#e8b06a;
+  --menu-bg:rgba(23,26,31,.9); --menu-blur:saturate(1.2) blur(14px);
+  --elev:0 2px 14px rgba(0,0,0,.5),0 0 .5px rgba(255,255,255,.14);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font:14px/22px var(--font-ui);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;padding:0}
+::-webkit-scrollbar{width:8px;height:8px} ::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+
+/* ============ 原型外层框架 ============ */
+.topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:16px;padding:0 20px;height:52px;background:var(--menu-bg);backdrop-filter:var(--menu-blur);border-bottom:.5px solid var(--line)}
+.topbar .logo{font-weight:600;font-size:14px;letter-spacing:.2px}
+.topbar .logo small{color:var(--ink-3-txt);font-weight:400;margin-left:8px}
+.screens{display:flex;gap:4px}
+.screens button{padding:5px 12px;border-radius:99px;font-size:13px;color:var(--ink-2)}
+.screens button.on{background:var(--accent-weak-2);color:var(--accent-txt);font-weight:500}
+.screens button:hover{background:var(--accent-weak)}
+.topbar .grow{flex:1}
+.theme-btn{border:.5px solid var(--line);border-radius:99px;padding:4px 12px;font-size:12px;color:var(--ink-2)}
+main{max-width:1240px;margin:0 auto;padding:20px 24px 80px}
+section.screen{display:none}
+section.screen.on{display:block}
+h2.s-title{font-size:18px;font-weight:600;margin:6px 0 2px}
+p.s-sub{color:var(--ink-2);font-size:13px;margin:0 0 14px}
+
+/* 演示控制条 */
+.demo-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;margin:0 0 12px;border:.5px dashed var(--line);border-radius:var(--r-lg);background:var(--card-2)}
+.demo-bar .lab{font-size:12px;color:var(--ink-3);margin-right:2px}
+.demo-bar button{border:.5px solid var(--line);background:var(--card);border-radius:var(--r-md);padding:5px 11px;font-size:12.5px;color:var(--ink)}
+.demo-bar button:hover{border-color:var(--accent);color:var(--accent)}
+.demo-bar button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.demo-bar .state-err{color:var(--bad);font-size:12px}
+
+/* ============ DSH 窗口壳 ============ */
+.dsh-window{display:flex;flex-direction:column;height:640px;border:.5px solid var(--line);border-radius:var(--r-xl);overflow:hidden;background:var(--card);box-shadow:var(--elev)}
+.titlebar{height:34px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:.5px solid var(--line-2);background:var(--card-2);font-size:12px;color:var(--ink-3)}
+.titlebar .dot{width:11px;height:11px;border-radius:50%}
+.body3{display:flex;flex:1;min-height:0}
+
+/* 左侧栏 */
+.side-l{width:218px;flex:none;border-right:.5px solid var(--line-2);background:var(--bg-side);display:flex;flex-direction:column;padding:10px 8px;gap:2px;overflow-y:auto}
+.side-l .sec{font-size:11px;color:var(--ink-3);padding:10px 8px 4px}
+.side-l .item{display:flex;flex-direction:column;gap:1px;width:100%;text-align:left;padding:7px 9px;border-radius:var(--r-md);font-size:13px;color:var(--ink-2);line-height:18px}
+.side-l .item small{font-size:11px;color:var(--ink-3)}
+.side-l .item:hover{background:var(--line-2)}
+.side-l .item.on{background:var(--card);color:var(--ink);box-shadow:var(--elev)}
+.side-l .item .nm{display:flex;align-items:center;gap:6px;min-width:0}
+.side-l .item .nm b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge-mini{flex:none;font-size:10px;line-height:14px;padding:0 5px;border-radius:99px;background:var(--accent-weak-2);color:var(--accent);font-weight:500}
+.badge-mini.gray{background:var(--line-2);color:var(--ink-3)}
+.badge-mini.warn{background:var(--warn-weak);color:var(--warn)}
+.round-tick{font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+
+/* 中栏会话 */
+.chat{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--card)}
+.chat-head{flex:none;display:flex;align-items:center;gap:8px;padding:10px 18px;border-bottom:.5px solid var(--line-2)}
+.chat-head .t{font-size:14px;font-weight:600}
+.chat-head .chip{font-size:11px;color:var(--ink-3);border:.5px solid var(--line);border-radius:99px;padding:1px 8px}
+.chat-body{flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:14px}
+.msg{max-width:78%;display:flex;flex-direction:column;gap:3px}
+.msg .who{font-size:11.5px;color:var(--ink-3)}
+.msg .bub{padding:9px 13px;border-radius:var(--r-lg);font-size:13.5px;line-height:21px;border:.5px solid var(--line-2);background:var(--card-2)}
+.msg.user{align-self:flex-end}
+.msg.user .bub{background:var(--accent-weak);border-color:transparent}
+.msg.sys{align-self:center;max-width:92%}
+.msg.sys .bub{background:transparent;border:.5px dashed var(--line);color:var(--ink-3);font-size:12px}
+/* 交接摘要卡 */
+.rollover{border:.5px solid var(--line);border-radius:var(--r-lg);background:var(--menu-bg);box-shadow:var(--elev);overflow:hidden;font-size:13px}
+.rollover .rh{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:.5px solid var(--line-2);background:var(--accent-weak)}
+.rollover .rh b{font-size:13.5px;font-weight:600}
+.rollover .rh .sp{flex:1}
+.rollover .rh .src{font-size:11.5px;color:var(--ink-2)}
+.rollover .rh a{font-size:11.5px;color:var(--accent);text-decoration:none}
+.rollover .rsec{padding:9px 14px;border-bottom:.5px solid var(--line-2)}
+.rollover .rsec:last-child{border-bottom:none}
+.rollover .rsec .k{font-size:11px;color:var(--ink-3);letter-spacing:.3px;margin-bottom:2px}
+.rollover .rsec .v{font-size:13px;color:var(--ink);line-height:20px}
+.rollover .rsec .v .em{color:var(--accent);font-weight:600}
+.rollover details{margin-top:4px}
+.rollover summary{cursor:pointer;font-size:12px;color:var(--ink-2);user-select:none}
+.rollover pre{font-family:var(--font-code);font-size:11.5px;line-height:17px;background:var(--bg-side);border:.5px solid var(--line-2);border-radius:var(--r-md);padding:8px 10px;overflow:auto;margin:6px 0 0;max-height:160px}
+.hl-step{display:inline-block;background:var(--accent-weak-2);color:var(--accent);border-radius:var(--r-sm);padding:0 6px;font-weight:600}
+/* 输入框区 */
+.composer-wrap{flex:none;padding:10px 18px 14px;border-top:.5px solid var(--line-2);position:relative;background:var(--card)}
+/* R2-08 旧位置面板（输入框上方 dock） */
+.legacy-dock{width:calc(100% - 0px);max-width:640px;margin:0 auto 8px;border-radius:var(--r-lg);background:var(--menu-bg);backdrop-filter:var(--menu-blur);box-shadow:var(--elev);padding:6px 12px;display:none}
+.legacy-dock.show{display:block}
+.legacy-dock .h{display:flex;align-items:center;gap:8px;cursor:pointer}
+.legacy-dock .h .tt{font-size:13px;font-weight:500;line-height:24px}
+.legacy-dock .h .pg{flex:1;min-width:0;font-size:13px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.legacy-dock .h .cv{color:var(--ink-3)}
+.composer{max-width:640px;margin:0 auto;border:.5px solid var(--line);border-radius:var(--r-xl);background:var(--card);box-shadow:var(--elev);padding:10px 14px;display:flex;align-items:center;gap:10px}
+.composer input{flex:1;border:none;outline:none;background:none;color:var(--ink);font:13.5px var(--font-ui)}
+.composer .send{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px}
+.composer.disabled{opacity:.55}
+.ro-banner{max-width:640px;margin:0 auto 8px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--warn);background:var(--warn-weak);border-radius:var(--r-md);padding:6px 10px}
+.ro-banner .sw{margin-left:auto;font-size:11.5px;border:.5px solid var(--warn);color:var(--warn);border-radius:99px;padding:2px 9px}
+
+/* 右侧栏 */
+.side-r{width:302px;flex:none;border-left:.5px solid var(--line-2);background:var(--bg-side);display:flex;flex-direction:column;min-height:0}
+.r-tabs{flex:none;display:flex;align-items:center;gap:2px;padding:8px 8px 0}
+.r-tabs button{display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--ink-2);padding:6px 10px;border-radius:var(--r-md) var(--r-md) 0 0;border:.5px solid transparent;border-bottom:none}
+.r-tabs button:hover{background:var(--line-2)}
+.r-tabs button.on{background:var(--card);color:var(--ink);font-weight:500;border-color:var(--line-2)}
+.r-tabs button svg{width:14px;height:14px}
+.r-body{flex:1;min-height:0;overflow:hidden;background:var(--card);border-top:.5px solid var(--line-2);display:flex;flex-direction:column}
+.r-pane{display:none;flex-direction:column;min-height:0;flex:1;overflow:hidden}
+.r-pane.on{display:flex}
+.r-pane>*{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.r-ph{padding:26px 18px;color:var(--ink-3);font-size:12.5px;line-height:20px}
+/* 任务进度面板（R2 核心） */
+.tp{padding:14px 14px 16px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}
+.tp-head .row1{display:flex;align-items:center;gap:6px}
+.tp-head .tt{font-size:13px;font-weight:500;line-height:24px;white-space:nowrap}
+.tp-head .cnt{margin-left:auto;font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tp-head .pct{font-size:12px;color:var(--ink-3);width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.tp-bar{height:5px;border-radius:99px;background:var(--line-2);overflow:hidden;margin-top:8px;position:relative}
+.tp-bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .5s ease}
+.tp-meta{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink-3);margin-top:6px}
+.tp-cur{font-size:12px;color:var(--ink-2);background:var(--accent-weak);border-radius:var(--r-md);padding:5px 9px;line-height:18px}
+.tp-cur b{color:var(--accent);font-weight:600}
+.tp-chips{display:flex;gap:6px;flex-wrap:wrap}
+.tp-chips button{font-size:11.5px;color:var(--ink-2);border:.5px solid var(--line);border-radius:99px;padding:2px 9px;background:var(--card)}
+.tp-chips button.on{background:var(--accent-weak-2);border-color:transparent;color:var(--accent);font-weight:500}
+.tp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;flex:1;min-height:0;overflow-y:auto}
+.tp-item{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:var(--r-md);border:.5px solid transparent}
+.tp-item .ix{flex:none;width:16px;font-size:11px;color:var(--ink-3);text-align:right;line-height:20px;font-variant-numeric:tabular-nums}
+.tp-item .glyph{flex:none;width:16px;height:16px;display:grid;place-items:center;margin-top:2px}
+.tp-item .ct{flex:1;min-width:0;font-size:13px;line-height:20px;color:var(--ink-2)}
+.tp-item.completed .ct{color:var(--ink-3)}
+.tp-item.current{background:var(--accent-weak);border-color:var(--accent-weak-2)}
+.tp-item.current .ct{color:var(--ink)}
+.dot{width:9px;height:9px;border-radius:50%}
+.dot.idle{background:none;border:1.5px solid var(--ink-3)}
+.dot.ongoing{background:var(--accent);box-shadow:0 0 0 0 var(--accent-weak-2);animation:pulse 1.6s infinite}
+.dot.done{background:var(--ok)}
+.dot.interrupt{background:none;border:1.5px solid var(--warn)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(77,107,254,.25)}70%{box-shadow:0 0 0 5px rgba(77,107,254,0)}100%{box-shadow:0 0 0 0 rgba(77,107,254,0)}}
+.tag{display:inline-block;font-size:10.5px;line-height:15px;padding:0 5px;border-radius:4px;font-weight:500;margin-left:6px;vertical-align:1px;white-space:nowrap}
+.tag.doing{background:var(--accent-weak-2);color:var(--accent-txt)}
+.tag.done{background:var(--ok-weak);color:var(--ok-txt)}
+.tag.pending{background:var(--line-2);color:var(--ink-3-txt)}
+.tag.interrupt{background:var(--warn-weak);color:var(--warn-txt)}
+.tag.carry{background:var(--ok-weak);color:var(--ok-txt)}
+/* 小字号（≤12.5px）文本统一走 AA 文本安全色，大字号与图标仍用原色 */
+.tp-meta,.tp-head .pct,.tp-item .ix,.tp-folded-hint,.tp-empty,.r-ph,.tp-item .sub,.legacy-dock .h .pg,.round-tick,.doc .muted{color:var(--ink-3-txt)}
+.tp-chips button.on,.tp-cur b,.tp-carry-chip a,.rollover .rh a,.rollover .rsec .v .em,.tp-empty .g code,.badge-mini{color:var(--accent-txt)}
+/* 中断提示卡（R2-07） */
+.tp-interrupt{display:flex;gap:8px;align-items:flex-start;border:.5px solid var(--warn);background:var(--warn-weak);border-radius:var(--r-lg);padding:10px 12px;font-size:12.5px;line-height:19px;color:var(--ink)}
+.tp-interrupt b{color:var(--warn)}
+.tp-interrupt .btn{margin-top:6px;display:inline-block;border:.5px solid var(--warn);color:var(--warn);border-radius:99px;font-size:11.5px;padding:2px 10px}
+/* 空态（R2-05） */
+.tp-empty{margin:auto;text-align:center;color:var(--ink-3);font-size:12.5px;line-height:20px;padding:30px 24px}
+.tp-empty svg{opacity:.5;margin-bottom:10px}
+.tp-empty .g{margin-top:8px;font-size:11.5px;color:var(--ink-3);background:var(--card-2);border:.5px dashed var(--line);border-radius:var(--r-md);padding:8px 10px;text-align:left}
+.tp-empty .g code{font-family:var(--font-code);font-size:11px;color:var(--accent)}
+.tp-carry-chip{font-size:11.5px;color:var(--ink-2);background:var(--card-2);border:.5px solid var(--line-2);border-radius:var(--r-md);padding:6px 9px;line-height:18px}
+.tp-carry-chip a{color:var(--accent);text-decoration:none}
+.tp-done-card{text-align:center;padding:18px 10px;color:var(--ink-2);font-size:12.5px}
+.tp-done-card .big{font-size:26px;color:var(--ok);line-height:40px}
+/* 可展开/收起：面板头折叠 + 任务项展开详情 */
+.tp-head .cv{flex:none;width:16px;height:16px;display:grid;place-items:center;color:var(--ink-3);cursor:pointer;border-radius:4px;transition:transform .18s}
+.tp-head .cv:hover{background:var(--line-2);color:var(--ink)}
+.tp-head .cv.fold{transform:rotate(-90deg)}
+.tp-head .more{flex:none;width:20px;height:20px;display:grid;place-items:center;color:var(--ink-3);cursor:pointer;border-radius:4px;font-size:14px;line-height:1;margin-left:2px}
+.tp-head .more:hover{background:var(--line-2);color:var(--ink)}
+.tp.folded .tp-bar,.tp.folded .tp-meta,.tp.folded .tp-cur,.tp.folded .tp-chips,.tp.folded .tp-list,.tp.folded .tp-done-card{display:none}
+.tp.folded .tp-folded-hint{display:block}
+.tp-folded-hint{display:none;font-size:11.5px;color:var(--ink-3);padding:4px 0 0}
+.tp{position:relative}
+.tp-item{position:relative;flex-wrap:wrap}
+.tp-item .exp{flex:none;width:14px;height:14px;margin-top:3px;display:grid;place-items:center;color:var(--ink-3);opacity:.55;transition:transform .18s;cursor:pointer}
+.tp-item.open .exp{transform:rotate(90deg);opacity:1;color:var(--accent)}
+.tp-item .ct{cursor:pointer}
+.tp-item .sub{display:none;flex-basis:100%;margin:3px 0 2px 26px;padding:6px 8px;border-left:2px solid var(--line);font-size:11.5px;line-height:18px;color:var(--ink-3)}
+.tp-item.open .sub{display:block}
+.tp-item .sub b{color:var(--ink-2);font-weight:500}
+.tp-item .sub .kv{display:flex;gap:6px}
+.tp-item .sub .kv span:first-child{flex:none;color:var(--ink-3);opacity:.8;min-width:44px}
+.tp-item.open{background:var(--card-2);border-color:var(--line)}
+/* 可达性：图标按钮的命中区补到 24×24（视觉尺寸不变），并给出键盘焦点环 */
+.tp-head .cv,.tp-head .more,.tp-item .exp{position:relative}
+.tp-head .cv::after{content:"";position:absolute;inset:-4px}
+.tp-head .more::after{content:"";position:absolute;inset:-2px}
+.tp-item .exp::after{content:"";position:absolute;inset:-5px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+/* 面板头 ⋯ 菜单（B12 手动换会话 / 快照 / 兼容） */
+.tp-menu{position:absolute;right:8px;left:8px;top:44px;z-index:40;min-width:0;max-width:none;background:var(--card);border:.5px solid var(--line);border-radius:var(--r-lg);box-shadow:0 8px 26px rgba(0,0,0,.14);padding:5px;backdrop-filter:blur(8px)}
+[data-theme="dark"] .tp-menu{box-shadow:0 8px 26px rgba(0,0,0,.5)}
+.tp-menu .mi{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font-size:12.5px;line-height:18px;color:var(--ink);padding:6px 8px;border-radius:var(--r-md);background:none}
+.tp-menu .mi:hover{background:var(--card-2)}
+.tp-menu .mi .k{margin-left:auto;font-size:10.5px;color:var(--ink-3)}
+.tp-menu .sep{height:.5px;background:var(--line);margin:4px 6px}
+.tp-menu .hint{font-size:11px;color:var(--ink-3);padding:4px 8px 6px;line-height:16px}
+
+/* 屏幕标注 chips */
+.map-chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 26px}
+.map-chips span{font-size:11.5px;color:var(--ink-2);border:.5px solid var(--line);background:var(--card);border-radius:99px;padding:2px 10px}
+.map-chips span b{color:var(--accent-txt);font-weight:600}
+
+/* 总览页 */
+.ov-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+.ov-card{border:.5px solid var(--line);border-radius:var(--r-xl);background:var(--card);padding:18px 20px;box-shadow:var(--elev)}
+.ov-card h3{margin:0 0 6px;font-size:15px}
+.ov-card p{margin:0;font-size:13px;color:var(--ink-2);line-height:21px}
+.ov-card .go{margin-top:10px;display:inline-block;font-size:12.5px;color:var(--accent)}
+.ov-note{grid-column:1/-1;border:.5px dashed var(--line);border-radius:var(--r-lg);background:var(--card-2);padding:12px 16px;font-size:12.5px;color:var(--ink-2);line-height:20px}
+
+/* 界面说明页 */
+.doc h3{font-size:15px;margin:26px 0 8px}
+.doc table{width:100%;border-collapse:collapse;font-size:12.8px;background:var(--card);border:.5px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
+.doc th,.doc td{border:.5px solid var(--line-2);padding:7px 10px;text-align:left;vertical-align:top;line-height:19px}
+.doc th{background:var(--card-2);font-weight:600;color:var(--ink)}
+.doc td b{color:var(--accent-txt)}
+.doc .warnrow td{background:var(--warn-weak)}
+.lockchip{display:inline-block;vertical-align:2px;margin-left:7px;font-size:10px;line-height:15px;font-weight:500;letter-spacing:.02em;color:var(--ok-txt);background:var(--ok-weak);border-radius:4px;padding:0 5px}
+.base-lock{border:.5px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-lg);background:var(--card-2);padding:12px 14px;margin:12px 0 14px;font-size:12.5px;line-height:20px;color:var(--ink-2)}
+.base-lock p{margin:0 0 8px}
+.base-lock p:last-child{margin:0}
+.base-lock b{color:var(--ink)}
+.base-lock code{font-family:var(--font-code);font-size:11.5px;background:var(--line-2);border-radius:4px;padding:1px 5px}
+.doc p{font-size:13px;color:var(--ink-2);line-height:21px}
+.kbd{font-family:var(--font-code);font-size:11.5px;background:var(--line-2);border-radius:4px;padding:1px 5px}
+/* toast 日志 */
+.logbox{position:fixed;right:18px;bottom:18px;z-index:99;width:330px;display:flex;flex-direction:column;gap:6px}
+.logbox .l{background:var(--card);border:.5px solid var(--line);box-shadow:var(--elev);border-radius:var(--r-lg);padding:8px 12px;font-size:12px;line-height:18px;color:var(--ink-2);animation:slide .25s ease}
+.logbox .l b{color:var(--ink)}
+.logbox .l.acc b{color:var(--accent)}
+@keyframes slide{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+.muted{color:var(--ink-3)}
+.small{font-size:12px}
+@media (max-width:1180px){ .side-l{width:180px} .side-r{width:272px} }
+
+/* R3 优化：卡片不参与压缩，展开后的内容由聊天区滚动承接。 */
+.rollover{flex-shrink:0;overflow:visible}
+.rollover.summary-collapsed>.rsec{display:none}
+.rollover.summary-collapsed>.rh+.rsec{display:block}
+.rollover.summary-collapsed>.rh+.rsec .v{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.summary-toggle{display:block;color:var(--accent-txt);padding:8px 14px;min-height:28px}
+.rollover .rh{flex-wrap:wrap;border-radius:10px 10px 0 0}
+.tp-menu[hidden]{display:none}
+.legacy-dock ul{max-height:140px;overflow:auto;padding-left:18px;margin:6px 0;font-size:12px}
+.tp-item .sub .kv span:first-child{opacity:1;color:var(--ink-3-txt)}
+.tp-item .sub{color:var(--ink-3-txt)}
+.tp-item .sub span[style*="opacity"]{opacity:1!important}
+#logbox{max-height:160px;overflow:auto;max-width:min(400px,calc(100vw - 32px))}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="logo">DSH 设计基线 v1.0 <span class="lockchip">已冻结</span><small>R2 右侧栏任务进度面板 · R3 会话分卷接续 ｜依据需求规格说明书 v1.2（11-04）｜已并入 11-04 九条决议</small></div>
+  <div class="grow"></div>
+  <nav class="screens" id="navScreens">
+    <button data-s="ov" class="on">总览</button>
+    <button data-s="r2">屏1 · 右侧栏进度面板</button>
+    <button data-s="r3">屏2 · 会话分卷接续</button>
+    <button data-s="doc">界面说明</button>
+  </nav>
+  <button class="theme-btn" id="themeBtn">切换深色</button>
+</header>
+
+<main>
+
+<!-- ================= 总览 ================= -->
+<section class="screen on" id="scr-ov">
+  <h2 class="s-title">两条 DSH 需求的可交互原型</h2>
+  <p class="s-sub">单文件 HTML，浏览器直接打开。视觉取 DSH Web GUI 现行设计语言（13px 列表 / 0.5px 细边 / 大圆角浮层 / 浅灰侧栏），演示数据为虚构。</p>
+  <div class="ov-grid">
+    <div class="ov-card">
+      <h3>屏 1 · 右侧栏「任务进度」面板（R2）</h3>
+      <p>在右侧栏新增 tab（席位 <code>sidebar.right.pane.tab</code>），复用 todos 投影渲染待办：完成 n / 共 m、百分比、当前步高亮、四态标签（待办/进行中/完成/中断）、空态引导、中断标记、旧位置兼容开关。</p>
+      <button class="go" onclick="go('r2')">打开屏 1 →</button>
+    </div>
+    <div class="ov-card">
+      <h3>屏 2 · 会话自动分卷与进度续接（R3 优化验证版）</h3>
+      <p>模拟「巡检」会话跑满 10 轮：改名「巡检-1」→ 新开「巡检-2」→ 八段交接摘要 + 待办快照注入首条消息 → 右侧栏自动加载「第 4 步进行中」进度条并续跑；含 -1 只读、命名冲突、同簇上限等边界演示。</p>
+      <button class="go" onclick="go('r3')">打开屏 2 →</button>
+    </div>
+    <div class="ov-card">
+      <h3>界面说明</h3>
+      <p>每屏元素 ↔ 需求点编号（R2-01…）/ 验收标准（AC-R2-x、AC-R3-x）对照表；<b>11-04 已确认的 9 条决议</b>与落地位置；仍未定项（Q1 费率、D-1′ 徽章时长、D-2′ 重启按钮）。</p>
+      <button class="go" onclick="go('doc')">打开说明 →</button>
+    </div>
+    <div class="ov-card">
+      <h3>原型纪律</h3>
+      <p>面板<b>只读</b>：不提供勾选 / 编辑 / 拖拽（R2-10 Won't，避免第二真相）。数据源仅 todos 投影，字段口径与 <code>progressLabel</code> 完全一致；并行 in_progress 全部高亮（本机预设 allowParallelInProgress=true）。</p>
+    </div>
+    <div class="ov-note">
+      现状依据（只读核对，不改宿主）：右侧栏 tab 席位 <span class="kbd">sidebar.right.pane.tab</span>（dsh-client-ui-sidebar-right）；输入框上方旧待办面板为 <span class="kbd">conversation.input.dock</span> 的 TodoPanel（dsh-client-ui-conversation）——屏 1 的列表项样式即按该组件 CSS 复刻后右移放大。
+    </div>
+  </div>
+</section>
+
+<!-- ================= 屏 1：R2 右侧栏面板 ================= -->
+<section class="screen" id="scr-r2">
+  <h2 class="s-title">屏 1 · 右侧栏「任务进度」面板（R2）</h2>
+  <p class="s-sub">下方为 DSH 工作区仿真。用演示控制条切换面板五种状态，或点「▶ 模拟实时推帧」观察 ≤2s 更新。</p>
+
+  <div class="demo-bar">
+    <span class="lab">面板状态：</span>
+    <button data-r2="default" class="on">默认（tab 不自动展开）</button>
+    <button data-r2="empty">空态</button>
+    <button data-r2="doing">进行中（含并行）</button>
+    <button data-r2="interrupt">中断</button>
+    <button data-r2="done">完成</button>
+    <span class="lab" style="margin-left:10px">其他：</span>
+    <button id="r2-stream">▶ 模拟实时推帧</button>
+    <button id="r2-legacy">兼容开关：同时显示输入框上方旧面板</button>
+  </div>
+
+  <div class="dsh-window">
+    <div class="titlebar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span style="margin-left:8px">DeepSeek Harness · 原型仿真（非真实运行）</span></div>
+    <div class="body3">
+      <aside class="side-l">
+        <div class="sec">Bots</div>
+        <button class="item"><span class="nm"><b>资深UI/UX设计师</b></span><small>原型 v0.1 · 本文件</small></button>
+        <button class="item"><span class="nm"><b>需求分析师</b></span><small>v1.2 已交付</small></button>
+        <div class="sec">会话</div>
+        <button class="item on"><span class="nm"><b>每日站点巡检</b></span><small>进行中 · todos 活跃</small></button>
+        <button class="item"><span class="nm"><b>插件市场周报</b></span><small>3 天前</small></button>
+      </aside>
+
+      <div class="chat">
+        <div class="chat-head"><span class="t">每日站点巡检</span><span class="chip">todo_write 投影活跃</span><span class="chip">本轮 4 轮</span></div>
+        <div class="chat-body">
+          <div class="msg user"><span class="who">用户</span><div class="bub">对 8 个站点做每日巡检，检查首页可用性、接口延迟、日志异常，汇总成报表。</div></div>
+          <div class="msg"><span class="who">巡检 Bot</span><div class="bub">收到。我把任务拆成 8 步待办并逐步执行，进度实时同步到右侧栏「任务进度」面板。</div></div>
+          <div class="msg"><span class="who">巡检 Bot</span><div class="bub">已完成站点 1–3 的检查；「拉取站点 4 首页快照」与「拉取站点 5 首页快照」并行进行中。</div></div>
+        </div>
+        <div class="composer-wrap">
+          <div class="legacy-dock" id="r2-legacy-dock">
+            <div class="h"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 3.5h12M2 8h12M2 12.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg><span class="tt">待办</span><span class="pg" id="r2-legacy-pg"></span><span class="cv">⌃</span></div>
+          </div>
+          <div class="composer"><input placeholder="给 Bot 发消息…（原型示意，不真实发送）"><span class="send">↑</span></div>
+        </div>
+      </div>
+
+      <aside class="side-r">
+        <div class="r-tabs" id="r2-tabs">
+          <button data-t="files"><svg viewBox="0 0 16 16" fill="none"><path d="M4 1.5h5.5L13 5v9.5H4z" stroke="currentColor" stroke-width="1.2"/><path d="M9 1.5V5h4" stroke="currentColor" stroke-width="1.2"/></svg>文件</button>
+          <button data-t="terminal"><svg viewBox="0 0 16 16" fill="none"><rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.2"/><path d="M4 6l3 2.5L4 11M8.5 11.5H12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>终端</button>
+          <button data-t="todo" class="on"><svg viewBox="0 0 16 16" fill="none"><path d="M2 3.5h12M2 8h12M2 12.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>任务进度<span class="badge-mini" id="r2-tab-badge" style="display:none">●</span></button>
+        </div>
+        <div class="r-body">
+          <div class="r-pane" data-p="files"><div class="r-ph">「文件」标签页——现有功能占位，保持原样，不在此原型范围。</div></div>
+          <div class="r-pane" data-p="terminal"><div class="r-ph">「终端」标签页——现有功能占位，保持原样，不在此原型范围。</div></div>
+          <div class="r-pane on" data-p="todo">
+            <div id="r2-panel"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <div class="map-chips">
+    <span><b>R2-01</b> tab 注册，默认不自动展开（切到「进行中」前徽章提示）</span>
+    <span><b>R2-02</b> 复用 TodoPanel 视觉右移放大</span>
+    <span><b>R2-03</b> 完成 n/共 m + 百分比 + 当前步高亮</span>
+    <span><b>R2-04</b> 四态标签</span>
+    <span><b>R2-05</b> 空态引导</span>
+    <span><b>R2-06</b> 实时推帧 ≤2s</span>
+    <span><b>R2-07</b> 中断标记</span>
+    <span><b>R2-08</b> 兼容开关</span>
+    <span><b>表9</b> 并行 in_progress 全高亮，当前步取第一个</span>
+    <span><b>决议1</b> 任务项与面板均可展开/收起</span>
+    <span><b>决议7</b> ⋯ 菜单「现在换会话」（B12）</span>
+  </div>
+</section>
+
+<!-- ================= 屏 2：R3 分卷接续 ================= -->
+<section class="screen" id="scr-r3">
+  <h2 class="s-title">屏 2 · 会话到轮次自动分卷与进度续接（R3）</h2>
+  <p class="s-sub">点「▶ 模拟一轮」推进轮次计数；跑满 10 轮后自动触发分卷。阈值 10 轮（Q3 已确认：一条用户消息 = 1 轮；轮次标签按「上轮标题 -N 轮」表述）。演示为压缩节奏：从第 9 轮起跑。</p>
+
+  <div class="demo-bar">
+    <button id="r3-round">▶ 模拟一轮</button>
+    <button id="r3-carry" disabled>▶ 在「巡检-2」继续一轮</button>
+    <button id="r3-conflict">边界演示：命名冲突（B7）</button>
+    <button id="r3-reset">↺ 重置演示</button>
+    <span class="lab" style="margin-left:8px">会话视角：</span>
+    <button id="r3-view2" class="on" disabled>巡检-2（当前）</button>
+    <button id="r3-view1" disabled>巡检-1（归档只读）</button>
+    <span class="lab" style="margin-left:8px">轮次：</span>
+    <b id="r3-round-n" style="font-variant-numeric:tabular-nums">9 / 10</b>
+  </div>
+
+  <div class="dsh-window">
+    <div class="titlebar"><span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span><span class="dot" style="background:#28c840"></span><span style="margin-left:8px">DeepSeek Harness · 原型仿真（非真实运行）</span></div>
+    <div class="body3">
+      <aside class="side-l">
+        <div class="sec">会话（本簇）</div>
+        <div id="r3-sessions"></div>
+        <div class="sec">其他会话</div>
+        <button class="item"><span class="nm"><b>插件市场周报</b></span><small>3 天前</small></button>
+      </aside>
+
+      <div class="chat">
+        <div class="chat-head" id="r3-chat-head"></div>
+        <div class="chat-body" id="r3-chat"></div>
+        <div class="composer-wrap" id="r3-composer-wrap"></div>
+      </div>
+
+      <aside class="side-r">
+        <div class="r-tabs">
+          <button data-t="files"><svg viewBox="0 0 16 16" fill="none"><path d="M4 1.5h5.5L13 5v9.5H4z" stroke="currentColor" stroke-width="1.2"/><path d="M9 1.5V5h4" stroke="currentColor" stroke-width="1.2"/></svg>文件</button>
+          <button data-t="todo" class="on"><svg viewBox="0 0 16 16" fill="none"><path d="M2 3.5h12M2 8h12M2 12.5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>任务进度</button>
+        </div>
+        <div class="r-body">
+          <div class="r-pane" data-p="files"><div class="r-ph">「文件」标签页——现有功能占位。</div></div>
+          <div class="r-pane on" data-p="todo"><div id="r3-panel"></div></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+  <div class="map-chips">
+    <span><b>4.3</b> 阈值 10 轮 · 触发时机=回合结束后</span>
+    <span><b>表14</b> 旧→原标题-1 / 新→原标题-2，不嵌套</span>
+    <span><b>4.4/表15</b> 八段摘要+待办快照（人读+JSON 双份）</span>
+    <span><b>B3/AC-R3-3</b> 第 4 步进行中标出并续跑</span>
+    <span><b>B9/Q2</b> -1 默认只读+手动开关</span>
+    <span><b>B7/表14</b> 命名冲突序号递增并写日志</span>
+    <span><b>B11</b> 同簇上限 9 卷</span>
+    <span><b>R2</b> 进度条数据源与 R2 面板同一投影</span>
+  </div>
+</section>
+
+<!-- ================= 界面说明 ================= -->
+<section class="screen doc" id="scr-doc">
+  <h2 class="s-title">界面说明</h2>
+  <p class="s-sub">原型每个元素对应哪条需求点 / 验收标准；第 3、4 节是 11-04 已确认的交互默认与 9 条决议落地对照。</p>
+
+  <h3>0. 基线冻结声明（v1.0 · 2026-11-04）</h3>
+  <div class="base-lock">
+    <p><b>本文件即设计基线 v1.0，自 2026-11-04 冻结。</b>右侧栏 <code>sidebar.right.pane.tab</code> 形态是唯一主形态，屏 1 / 屏 2 的布局、文案、状态、交互默认即为开发实现口径；输入框上方旧 dock 只作为 R2-08 兼容开关存在，不再作为独立形态演进。</p>
+    <p><b>冲突时以本文件为准的方向只有一处</b>：UI 形态与交互。需求 v1.2 与 PRD v1.1 应回写条款与判据来对齐本文件，不能反过来要求原型改回底部抽屉。数值型判据（字数、卷数、命中区、对比度）以本文件与 <code>设计基线_R2R3_v1.0.md</code> 为准。</p>
+    <p><b>v0.1 → v1.0 只动了三类</b>：① 基线标识与冻结声明（本段）；② WCAG 2.2 AA 可达性修订——状态标签改为随文案流内联、三处图标按钮命中区补到 24×24、状态/次要文字改用文本安全色（<code>--*-txt</code>，详见 §5）；③ 无结构改动，屏数、组件、五态、九条决议落地位置均未变。<b>冲突清单全文</b>见同目录 <code>设计基线_R2R3_v1.0.md</code>，含每条的设计建议与验收判据；下表为摘要。</p>
+  </div>
+  <table>
+    <tr><th style="width:38px">#</th><th style="width:220px">冲突点</th><th>基线裁定</th><th style="width:190px">需回写到</th></tr>
+    <tr><td>C1</td><td>PRD Q7 底部抽屉 vs 右侧栏 tab</td><td>右侧栏 tab 为唯一主形态；<b>AC-R2-6「375px 窄屏、dock 展开 ≤60% 视口」判据作废</b>，改为「侧栏内部滚动、不遮挡中栏与输入框」</td><td>PRD v1.1 重写 Q7 与 AC-R2-6；需求 v1.2 删窄屏抽屉条款</td></tr>
+    <tr><td>C2</td><td>八段交接摘要 vs 需求「固定四段、≤1500 字」</td><td>四段 = 生成层契约（正文 ≤1500 字）；八段 = 渲染层信息分组，⑦簇标识 / ⑧重试计数取自元数据不占字数，⑥快照 JSON 亦不计入 1500 字</td><td>需求 v1.2 补「四段→八段」映射表与字数口径</td></tr>
+    <tr><td>C3</td><td>-1 只读 / 同簇 9 卷上限 / 簇索引反向跳转：v1.1 无此三条</td><td>三条全部保留为新增条款：只读默认开 + 手动开关（与簇索引同落点，不写 session 元数据）；第 9 卷后拒绝第 10 卷并写日志；来源 chip 按簇索引（<code>parent_session_id</code> / <code>root_session_id</code> / <code>vol_no</code>）只跳上一卷。索引存 <code>plugin-data/dsh-session-rollover/</code>，不丢靠三层：home 升级安全 + <code>rebuildFromTitles</code> 对账重建 + 不可写时 <code>cluster-index-missing</code> 降级</td><td>需求 v1.2 增条款与编号；数据模型加三个字段；存储与「无静默丢」口径按 PRD v1.1 §8⑧</td></tr>
+    <tr><td>C4</td><td>R2-08 兼容开关打开后的形态未定义</td><td>渲染旧 TodoPanel 完整形态（与屏 1 同源只读），不是一行摘要；默认关、状态持久化</td><td>需求 v1.2 / PRD v1.1 各补一句形态</td></tr>
+    <tr><td>C5</td><td>「默认不自动展开」缺可验收的在场语义</td><td>tab 常驻；有活跃 todos 才亮蓝点徽章；切 tab 不改变滚动位置；无 todos 不亮徽章</td><td>PRD v1.1 补一条 AC</td></tr>
+    <tr><td>C6</td><td>密度与可达性未达 AA（实测：文案列 125px / 命中区 14–20px / 三处对比度 3.6–4.3）</td><td>状态标签内联 + 修掉双层 <code>.tp</code>（文案列 125→192px，列表项 245→273px）；列表去掉写死的 340px，改 <code>flex:1</code> 占满面板；三处命中区补 24×24；四处状态色改文本安全色</td><td>无（本文件已改）；AC-R2-8 增「24×24 命中区、正文 4.5:1」</td></tr>
+    <tr><td>C7</td><td>一处待终裁（已闭环）：B2 分卷前置校验——硬闸只设 in-flight=0，job 不闸但与快照同一时刻取全集、全数入交接第⑤段；另：R3 面板头是否复用 R2 同一组件（现原型 R3 只有 ⌄、无 ⋯）</td><td>B2 已由产品终裁采纳开发口径，<b>不新增「等待后台 job」第六态</b>；R3 应复用同一面板组件，⋯ 菜单随之继承</td><td>开发按此建测；R3 组件复用进 M1 设计核对</td></tr>
+    <tr><td>C8</td><td>段号三份文档三种叫法（本文件⑤段 / PRD ⑤段 / 开发七件套④项）</td><td>UI 顺序以本文件八段为准；契约与 PRD 引用写段名而不是只写编号</td><td>需求 v1.2 统一一次</td></tr>
+  </table>
+  <p class="s-sub"><b>不在基线内</b>：375px 窄屏抽屉形态（随 Q7 翻案作废，代码已从本文件移除）· 中断卡「一键重启任务」（建议不做，与只读纪律冲突）。完成徽章 30 分钟阈值已于 PRD v1.1 定为 <b>AC-R2-10（阈值可配）</b>，纳入基线。</p>
+  <p class="s-sub">引用口径：<b>AC 编号一律以需求 v1.2 为准</b>，跨文档引用带版本号；本页出现的 PRD 条款均为 <b>PRD v1.1</b>（11-04）。</p>
+
+  <h3>1. 屏 1 元素 ↔ R2 需求点</h3>
+  <table>
+    <tr><th>原型元素</th><th>需求点 / 验收标准</th><th>说明</th></tr>
+    <tr><td>右侧栏新增「任务进度」tab（与文件/终端并列）</td><td><b>R2-01</b> Must</td><td>注册席位 <code>sidebar.right.pane.tab</code>；打开 tab ≠ 面板自动展开，tab 上的小圆点徽章仅在有活跃 todos 时出现。</td></tr>
+    <tr><td>待办列表（步号+状态点+文案逐字）</td><td><b>R2-02 / R2-03 / AC-R2-2</b></td><td>复用 TodoPanel 的 16px glyph + 13px/20px 文案，右栏宽度内允许换行不截断（对齐“逐字一致、无截断”验收）；content 不加工。</td></tr>
+    <tr><td>「完成 3 / 共 8」+ 百分比条 + 当前步行</td><td><b>R2-03 / AC-R2-3</b></td><td>done/active/pending 三数与 progressLabel 同口径；「当前第 X 步」取第一个 in_progress 的 index；百分比仅展示（44 进制向下取整）。</td></tr>
+    <tr><td>两个并行 in_progress 同时高亮脉冲</td><td><b>表9 active 行</b></td><td>本机预设 allowParallelInProgress=true → UI 必须高亮全部 in_progress，不假定唯一。</td></tr>
+    <tr><td>状态筛选 chips（全部/进行中/待办/完成）</td><td><b>R2-04 辅助</b></td><td>纯前端过滤，不改数据；「中断」不单列 chip（中断是会话级标记，不是单项状态）。</td></tr>
+    <tr><td>空态：「模型本轮未产生待办」+ 触发引导</td><td><b>R2-05 / AC-R2-4</b></td><td>禁止空白面板；投影为 null 时降级空态，不报错不白屏。</td></tr>
+    <tr><td>「▶ 模拟实时推帧」逐步流更新</td><td><b>R2-06 / AC-R2-1</b></td><td>真实实现订阅 session/projection 推帧（≤2s），原型用 900ms 节奏模拟。</td></tr>
+    <tr><td>中断提示卡（黄色）</td><td><b>R2-07 / AC-R2-5</b></td><td>三条件同时成立才置真：上一帧见 in_progress ∧ 投影清空 ∧ 本轮无新 todo/write。仅 null 不算证据。提供「查看上一轮快照」入口。</td></tr>
+    <tr><td>「完成」态大勾 + 归档文案</td><td><b>R2-04</b></td><td>全完成后投影仍在（todos 全 done），面板 30 分钟后收起为完成徽章（默认值，见拍板 D-1）。</td></tr>
+    <tr><td>「兼容开关」→ 输入框上方旧 TodoPanel 同屏出现</td><td><b>R2-08 Could / Q6</b></td><td>迁移期两处同渲染（同一数据源双视图）；开关持久化，默认关。</td></tr>
+    <tr><td>任务项展开 / 收起（点文案或右侧 ⌄ 展开该步详情）</td><td><b>决议 1</b>（11-04）</td><td>每条任务可展开：状态 / 说明 / 产物路径 / 耗时。收起态仍是一行 13px 文案，不改变 R2-02 的逐字不截断。面板头 ⌄ 可整块收起为一行摘要。</td></tr>
+    <tr><td>面板头 ⋯ 菜单</td><td><b>决议 7（Q5/B12）· 决议 6（Q4）</b></td><td>「现在换会话 / 新建会话」按 R3 交接规则开新卷；「复制待办快照 JSON」给原样快照；「兼容：显示旧面板」等同 R2-08 开关；「收起面板」。</td></tr>
+    <tr><td>列表无勾选框/拖拽柄</td><td><b>R2-10 Won't</b></td><td>只读纪律：写操作一律回到会话里由模型 todo_write 整表更新。</td></tr>
+  </table>
+
+  <h3>2. 屏 2 元素 ↔ R3 规则与验收</h3>
+  <table>
+    <tr><th>原型元素 / 流程步</th><th>规则 / 验收标准</th><th>说明</th></tr>
+    <tr><td>左栏「巡检」轮次角标 9/10 → 10/10；会话头「上轮：巡检-1 第 10 轮 / 本卷：巡检-2 第 1 轮」</td><td><b>表14 轮次口径 / Q3 已确认</b></td><td>按确认口径：轮次标签用「上轮标题 -N 轮」表述——计数单位是一条用户消息=1 轮，agent 内部 turn 不计；新卷从第 1 轮重新起算，并在头部标出上一卷跑到第几轮。</td></tr>
+    <tr><td>回合结束→下一轮开始前触发分卷</td><td><b>表14 触发时机</b></td><td>原型里「▶ 模拟一轮」按钮点完（回合结束）即检查阈值；有后台 job 时等 job 结束或句柄入交接（表15-5）。</td></tr>
+    <tr><td>会话列表：巡检→巡检-1（灰显+只读徽章），插入巡检-2（选中）</td><td><b>4.3 / AC-R3-1 / AC-R3-6</b></td><td>序号从 1 起、同簇递增不嵌套；第三卷为 -3。角标「卷 N/9」体现上限 9 卷（B11）。</td></tr>
+    <tr><td>「巡检-2」首条消息 = 交接摘要卡（八段）</td><td><b>4.4 表15 / AC-R3-2</b></td><td>段：上轮工作摘要 / 当前工作 / 关键约束（原文摘录）/ 文件与代码 / 未竟后台 job / 待办快照（人读+JSON）/ 簇标识 / 失败重试计数。快照 JSON 可折叠直读，供 -2 续跑。</td></tr>
+    <tr><td>摘要卡内「第 4 步进行中」高亮</td><td><b>B3 / AC-R3-3</b></td><td>active 为 0 时改写「尚未开始」，不造假。</td></tr>
+    <tr><td>右侧栏面板自动出现 3/8 进度条 + 「承自巡检-1」来源 chip</td><td><b>R2×R3 接口</b></td><td>R3 续跑的进度就是 R2 面板的数据源（todos 投影快照），同一真相；来源 chip 提供反向跳转到 -1（簇标识 parentSessionId）。</td></tr>
+    <tr><td>「在 -2 继续一轮」→ 第 4 步完成、进度 4/8</td><td><b>4.1 目标④</b></td><td>模型在 -2 里自行续表（Q4 建议：原样快照带入，模型自行调整）。</td></tr>
+    <tr><td>切到「巡检-1」：输入框禁用 + 归档横幅 + 「允许再次写入」开关</td><td><b>B9 / AC-R3-7 / Q2</b></td><td>默认转只读保留历史全景；开关恢复写入（Q2 已确认：默认只读 + 手动放行）。</td></tr>
+    <tr><td>「命名冲突」演示：已存在巡检-2 → 新卷名称顺延为巡检-3（卷标仍记 卷 2/9）+ toast 写日志</td><td><b>B7 / 表14 冲突行 / 决议 5</b></td><td>名称递增到第一个空位；<b>簇内卷标仍记真实卷序</b>（名称 ≠ 卷序）。用户手动改过名则不覆盖、用内部序号并提示（B8，原型未演示，说明见 D-3）。</td></tr>
+    <tr><td>摘要失败重试（原型 toast 模拟）</td><td><b>B5 / AC-R3-4</b></td><td>生成失败不分卷、旧会话不动，记 summary-error 下轮重试 ≤2 次。</td></tr>
+    <tr><td>subagent 会话不触发分卷</td><td><b>B10</b></td><td>仅 owner 会话生效；原型以角标「不受分卷管理」示意，可省略。</td></tr>
+  </table>
+
+  <h3>3. 交互默认（11-04 已定稿）</h3>
+  <table>
+    <tr><th>#</th><th>分叉点</th><th>已定做法</th><th>说明</th></tr>
+    <tr><td>D-1</td><td>面板常驻 or 可开关</td><td>tab 常驻可开；<b>默认不自动展开</b>；有活跃 todos 时 tab 出现蓝点徽章；面板内任务项与整块均可展开/收起。</td><td>不打扰 + 可追溯；徽章是唯一的在场信号。</td></tr>
+    <tr><td>D-2</td><td>进度条粒度</td><td>细进度条 = 已完成步数 / 总步数（决议 4）；不做环形、不做甘特、不按 token 折算。</td><td>与 progressLabel 同源，同一真相。</td></tr>
+    <tr><td>D-3</td><td>-N 命名冲突提示</td><td>名称顺延到第一个空位 + toast 一行写日志；<b>簇内卷标仍记真实卷序</b>；用户手动改名不覆盖。</td><td>名称是展示层，卷序是数据层，两者分开才不会把日志读错。</td></tr>
+    <tr><td>D-4</td><td>交接摘要卡位置</td><td>作为新卷首条 user/message 卡片渲染（八段、JSON 可折叠）。</td><td>表15 指定的去向；可见可追溯。</td></tr>
+  </table>
+
+  <h3>4. 11-04 决议对照表（9 条已确认，均已落进原型）</h3>
+  <table>
+    <tr><th>#</th><th>决议</th><th>原型落地位置</th><th>剩余动作</th></tr>
+    <tr><td>1</td><td>右侧面板默认不自动展开；面板内任务内容可展开/收起</td><td>屏 1：任务项点文案或 ⌄ 展开「状态/说明/产物/耗时」；面板头 ⌄ 整块收起；tab 徽章只在有活跃 todos 时亮</td><td>无</td></tr>
+    <tr><td>2</td><td>旧会话默认只读 + 手动开关放行（Q2）</td><td>屏 2：巡检-1 归档横幅 + 输入禁用 + 「允许再次写入」开关</td><td>无</td></tr>
+    <tr><td>3</td><td>轮次口径按「上轮标题 -N 轮」（Q3）</td><td>屏 2：会话头双 chip「上轮：巡检-1 第 10 轮」「本卷：巡检-2 第 1 轮」；左栏角标同步</td><td>若你要的是另一种读法（例如只显示累计总轮次），告我一句即可改</td></tr>
+    <tr><td>4</td><td>续接进度条按已完成步数比例，不按 token</td><td>屏 2 右侧栏：3/8=38% → 续跑后 4/8=50%</td><td>无</td></tr>
+    <tr><td>5</td><td>-N 冲突序号递增到空位 + 写日志，簇内卷标记真实卷序</td><td>屏 2「边界演示：命名冲突」：名称 巡检-3、卷标仍「卷 2/9」，toast 写日志</td><td>无</td></tr>
+    <tr><td>6</td><td>Q4：接力待办原样快照，模型自行调整</td><td>屏 2 交接卡第⑥段：人读清单 + 可折叠 JSON 原样快照</td><td>无</td></tr>
+    <tr><td>7</td><td>Q5/B12：要「现在换会话」手动按钮，放面板头部 ⋯ 菜单</td><td>屏 1 面板头 ⋯ 菜单第一项「现在换会话 / 新建会话」</td><td>无（真实实现走 R3 同一套交接）</td></tr>
+    <tr><td>8</td><td>Q6：旧位置面板保留一个版本作兼容开关</td><td>屏 1「兼容开关（R2-08）」按钮，也可从 ⋯ 菜单触发</td><td>无</td></tr>
+    <tr><td>9</td><td>Q8：插件改名 dsh-task-panel → dsh-todo-progress</td><td>说明与落地命名统一用 <code>dsh-todo-progress</code>，与 tab 文案「任务进度」对齐</td><td>发布前在插件清单里改名，旧名留一个 alias</td></tr>
+  </table>
+  <p class="s-sub" style="margin-top:8px">仍未定：Q1 费率（不阻塞）· D-1′ 完成徽章 30 分钟消失阈值 · D-2′ 中断卡是否加「一键重启任务」（建议不加，违反只读纪律）。</p>
+
+  <h3>5. 视觉与实现备注</h3>
+  <p>① 间距/字号/圆角/边框复刻自宿主实测 CSS（TodoPanel.module.css：13px/20px 列表、0.5px hairline、radius-lg 浮层、backdrop-filter 菜单底；boot 标签色 #0f1115 / #61666b / #81858c，浅底 #f9fafb）。品牌蓝 #4D6BFE 为 DeepSeek 通行品牌色，实际以宿主运行时 token（--dsw-alias-*）为准。② 深色模式为同 token 的暗色映射，正式实现应直接消费主题变量。③ 本原型零依赖零构建；正式实现为纯前端插件包<b> dsh-todo-progress</b>（R2）+ host 侧插件（R3），不改任何 @deepseek-ai 宿主包源码（AC-R2-8 / AC-R3-8）。④ 展开/收起只在视图层：任务项展开不改 todos 数据，面板收起不丢投影；真实实现里这两者都是本地 UI 状态，不写回会话。⑤ 列表高度<b>不写死</b>：v1.0 已去掉 340px 演示值，列表 <code>flex:1</code> 占满面板剩余高度、内部滚动，窗口变高自动多显示（302px 面板 / 561px 面板体下可视 355px、内容 406px：6 条完整 + 第 7 条半露）。⑥ 状态标签内联在文案流内，顺带修掉 <code>renderR2Panel</code> 生成双层 <code>.tp</code> 的 padding 翻倍问题（文案列 125→192px，列表项 245→273px）；⌄ / ⌃ / ⋯ 三个图标按钮用 <code>::after</code> 把命中区补到 24×24，视觉尺寸不变；正文与状态文字统一走 <code>--*-txt</code> 文本安全色（≥4.5:1），品牌蓝只用于填充与描边。</p>
+</section>
+</main>
+
+<div class="logbox" id="logbox"></div>
+
+<script>
+/* ================= 工具 ================= */
+function el(html){const t=document.createElement('template');t.innerHTML=html.trim();return t.content.firstChild;}
+function toast(msg,acc){const b=document.getElementById('logbox');const n=el('<div class="l'+(acc?' acc':'')+'">'+msg+'</div>');b.appendChild(n);setTimeout(()=>{n.style.transition='opacity .4s';n.style.opacity='0';setTimeout(()=>n.remove(),400);},4200);}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+
+/* ================= 屏幕切换 ================= */
+document.getElementById('navScreens').addEventListener('click',e=>{const b=e.target.closest('button');if(b)go(b.dataset.s);});
+function go(id){
+  document.querySelectorAll('.screens button').forEach(x=>x.classList.toggle('on',x.dataset.s===id));
+  document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('on',x.id==='scr-'+id));
+  window.scrollTo(0,0);
+}
+document.getElementById('themeBtn').addEventListener('click',()=>{
+  const h=document.documentElement;const d=h.getAttribute('data-theme')==='dark';
+  h.setAttribute('data-theme',d?'light':'dark');
+  document.getElementById('themeBtn').textContent=d?'切换深色':'切换浅色';
+});
+
+/* ================= R2 面板 ================= */
+const R2_TODOS=[
+ {content:'检查站点 1 首页可用性与 HTTPS 证书',status:'completed'},
+ {content:'检查站点 2 首页可用性与 HTTPS 证书',status:'completed'},
+ {content:'汇总站点 1-3 接口延迟（P50/P95）',status:'completed'},
+ {content:'拉取站点 4 首页快照',status:'in_progress'},
+ {content:'拉取站点 5 首页快照',status:'in_progress'},
+ {content:'检查站点 4-5 日志异常关键字',status:'pending'},
+ {content:'生成巡检报表草稿（含对比昨日）',status:'pending'},
+ {content:'把报表发送到「运营值班」群',status:'pending'},
+];
+const R2_DETAILS=[
+ {note:'HTTP 200，证书链完整，首屏 0.42s',out:'reports/site1.png',t:'08:12 → 08:14'},
+ {note:'HTTP 200，证书 41 天到期，首屏 0.58s',out:'reports/site2.png',t:'08:14 → 08:16'},
+ {note:'P50 213ms / P95 486ms，较昨日 +7%',out:'reports/latency-1104.csv',t:'08:16 → 08:19'},
+ {note:'正在等待 SSO 登录态刷新（第 2 次重试）',out:'—',t:'已 1m20s'},
+ {note:'并行任务：截图排队中，等待站点 4 释放会话',out:'—',t:'已 0m45s'},
+ {note:'关键字：ERROR / Timeout / 5xx',out:'—',t:'待开始'},
+ {note:'含昨日同期对比、波动 TOP5',out:'—',t:'待开始'},
+ {note:'目标群：运营值班（外部发送需确认）',out:'—',t:'待开始'},
+];
+function subOf(i,t){
+  const d=R2_DETAILS[i]||{note:'—'};
+  const st={completed:'已完成 · 可回看产物',in_progress:'进行中 · 模型正在做这一步',pending:'待开始 · 等前面步骤释放'}[t.status]||'';
+  return '<div class="kv"><span>状态</span><span>'+st+'</span></div>'
+    +'<div class="kv"><span>说明</span><span>'+esc(d.note||'—')+'</span></div>'
+    +'<div class="kv"><span>产物</span><span>'+esc(d.out||'—')+'</span></div>'
+    +'<div class="kv"><span>时间</span><span>'+esc(d.t||'—')+'</span></div>'
+    +'<div class="kv" style="margin-top:3px"><span></span><span style="color:var(--ink-3);opacity:.75">只读视图：改状态请在会话里由模型 todo_write 整表更新</span></div>';
+}
+function derive(todos){
+  const total=todos.length;
+  const done=todos.filter(t=>t.status==='completed').length;
+  const active=todos.filter(t=>t.status==='in_progress').length;
+  const pending=total-done-active;
+  const firstActive=todos.findIndex(t=>t.status==='in_progress');
+  return {total,done,active,pending,firstActive,pct:total?Math.floor(done/total*100):0};
+}
+function tagOf(s,interrupted){
+  if(interrupted)return '<span class="tag interrupt">中断</span>';
+  if(s==='completed')return '<span class="tag done">完成</span>';
+  if(s==='in_progress')return '<span class="tag doing">进行中</span>';
+  return '<span class="tag pending">待办</span>';
+}
+function dotOf(s,interrupted){
+  if(interrupted)return '<span class="dot interrupt" role="img" aria-label="已中断"></span>';
+  if(s==='completed')return '<span class="dot done" role="img" aria-label="已完成"></span>';
+  if(s==='in_progress')return '<span class="dot ongoing" role="img" aria-label="进行中"></span>';
+  return '<span class="dot idle" role="img" aria-label="待办"></span>';
+}
+const R2_FILTERS=['all','in_progress','pending','completed'];
+const FILTER_LABEL={all:'全部',in_progress:'进行中',pending:'待办',completed:'完成'};
+let r2Filter='all',r2Folded=false,r2Open={};
+function toggleR2Menu(head){
+  if(document.querySelector('#r2-panel .tp-menu')){closeR2Menu();return;}
+  const host=document.getElementById('r2-panel');
+  const holder=host.querySelector('.tp')||host;
+  const m=el('<div class="tp-menu">'
+    +'<button class="mi" data-m="switch">⇄ 现在换会话 / 新建会话<span class="k">B12</span></button>'
+    +'<div class="hint">手动结束当前卷并开新会话；与自动分卷同一套交接（八段摘要 + 待办快照）。</div>'
+    +'<div class="sep"></div>'
+    +'<button class="mi" data-m="json">⧉ 复制待办快照 JSON<span class="k">Q4</span></button>'
+    +'<button class="mi" data-m="legacy">⌃ 兼容：显示输入框上方旧面板<span class="k">R2-08</span></button>'
+    +'<button class="mi" data-m="fold">⌄ 收起面板</button>'
+    +'</div>');
+  holder.appendChild(m);
+  m.addEventListener('click',ev=>{
+    const b=ev.target.closest('[data-m]');if(!b)return;
+    const k=b.dataset.m;
+    if(k==='switch')toast('已确认 B12：面板 ⋯ 菜单提供「现在换会话」。点击后按 R3 交接规则开新卷——原型不真实建会话。',true);
+    if(k==='json')toast('已复制当前 todos 投影 JSON（原样快照，Q4 已确认）· 长度 '+JSON.stringify(r2Todos).length+' 字符');
+    if(k==='legacy'){document.getElementById('r2-legacy').click();}
+    if(k==='fold'){r2Folded=true;renderR2Panel(r2State,r2Todos,r2Extra);}
+    closeR2Menu();
+  });
+}
+function closeR2Menu(){const m=document.querySelector('#r2-panel .tp-menu');if(m)m.remove();}
+document.addEventListener('click',e=>{if(!e.target.closest('.tp-menu')&&!e.target.closest('[data-act="more"]'))closeR2Menu();});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape')closeR2Menu();
+  const a=e.target.closest&&e.target.closest('[data-act]');
+  if(a&&(e.key==='Enter'||e.key===' ')){e.preventDefault();a.click();}
+});
+
+function renderR2Panel(state,todos,extra){
+  const host=document.getElementById('r2-panel');
+  const badge=document.getElementById('r2-tab-badge');
+  host.onclick=null;closeR2Menu();
+  if(state==='default'){
+    badge.style.display='none';
+    host.innerHTML='<div class="r-ph">已打开「任务进度」tab。模型尚未调用 todo_write，面板按空态渲染前先给一个未展开占位——真实实现中此处直接显示空态引导（切「空态」按钮查看）。<br><br>此屏演示：<b>tab 默认不自动展开</b>（R2-01）。</div>';
+    setLegacy('');
+    return;
+  }
+  if(state==='empty'){
+    badge.style.display='none';
+    host.innerHTML='<div class="tp-empty">'
+      +'<svg width="34" height="34" viewBox="0 0 24 24" fill="none"><rect x="4" y="3.5" width="16" height="17" rx="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M8 8.5h8M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>'
+      +'<div style="font-size:13px;color:var(--ink-2)">模型本轮未产生待办</div>'
+      +'<div class="g">长任务开始时模型会调用 <code>todo_write</code> 写入待办清单，这里将实时出现进度。<br>（若刚被中断，会显示黄色「未完成即中断」标记，而非本页）</div></div>';
+    setLegacy('');
+    return;
+  }
+  const d=derive(todos);
+  badge.style.display=d.active>0?'inline-block':'none';
+  let html='<div class="tp'+(r2Folded?' folded':'')+'">';
+  if(state==='interrupt'){
+    html+='<div class="tp-interrupt"><div style="flex:1"><b>检测到未完成即中断。</b><br>上一轮进行到 <b>第 '+(extra&&extra.at?extra.at:4)+' 步</b>「'+esc(extra&&extra.item?extra.item:'拉取站点 4 首页快照')+'」，本轮开始时投影被清空且未收到新的 todo_write。<br><span style="color:var(--ink-3);font-size:11.5px">判定=上一帧见 in_progress ∧ 投影清空 ∧ 本轮无新写入（三条件，缺一不亮）</span><br><button class="btn">查看上一轮待办快照</button></div></div>';
+    html+='<div class="tp-done-card" style="padding:10px 0;color:var(--ink-3)">当前投影为空 —— 中断后无活跃清单</div></div>';
+    host.innerHTML=html;
+    setLegacy('⚠ 第 '+extra.at+' 步未完成即中断');
+    return;
+  }
+  /* doing / done */
+  const carry=(extra&&extra.carryChip)?'<div class="tp-carry-chip">进度承自会话 <a href="javascript:void(0)">巡检-1</a> 的待办快照 · 已按原样带入（Q4 已确认）</div>':'';
+  const folded=!!r2Folded;
+  html+=carry
+    +'<div class="tp-head"><div class="row1"><span class="tt">任务进度</span><span class="cnt">完成 '+d.done+' / 共 '+d.total+'</span><span class="pct">'+d.pct+'%</span>'
+    +'<span class="cv'+(folded?' fold':'')+'" data-act="fold" tabindex="0" role="button" aria-expanded="'+(folded?'false':'true')+'" title="'+(folded?'展开面板':'收起面板')+'"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.25L6 7.75L9.5 4.25" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+    +'<span class="more" data-act="more" tabindex="0" role="button" aria-haspopup="menu" title="更多（B12 手动换会话 / 快照）">⋯</span></div>'
+    +'<div class="tp-bar"><i style="width:'+d.pct+'%"></i></div>'
+    +'<div class="tp-meta"><span>更新于 8 秒前</span><span>·</span><span>进行中 '+(d.active)+'</span><span>·</span><span>待办 '+d.pending+'</span>'+(carry?'<span>·</span><span style="color:var(--ok)">续接中</span>':'')+'</div>'
+    +'<div class="tp-folded-hint">已收起 · 完成 '+d.done+'/'+d.total+'（'+d.pct+'%）· 点右侧 ⌄ 展开</div></div>';
+  if(state==='doing'&&d.firstActive>=0){
+    html+='<div class="tp-cur">当前第 <b>'+extra.stepIx+'</b> 步：'+esc(todos[d.firstActive].content)+(d.active>1?' <span class="muted">（并行 '+d.active+' 项进行中）</span>':'')+'</div>';
+  }
+  if(state==='doing'){
+    html+='<div class="tp-chips">'+R2_FILTERS.map(f=>'<button data-f="'+f+'" class="'+(r2Filter===f?'on':'')+'">'+FILTER_LABEL[f]+' '+(f==='all'?d.total:(f==='in_progress'?d.active:(f==='pending'?d.pending:d.done)))+'</button>').join('')+'</div>';
+  }
+  if(state==='done'){
+    html+='<div class="tp-done-card"><div class="big">✓</div>全部完成（'+d.total+'/'+d.total+'）· 报表已发送<br><span class="muted" style="font-size:11.5px">投影保留 30 分钟后徽章收起（拍板项 D-1′）</span></div>';
+  }
+  const list=todos.map((t,i)=>{
+    if(r2Filter!=='all'&&t.status!==r2Filter)return '';
+    const cur=(state==='doing'&&t.status==='in_progress');
+    const open=!!r2Open[i];
+    return '<li class="tp-item '+t.status+(cur?' current':'')+(open?' open':'')+'" data-ix="'+i+'">'
+      +'<span class="ix">'+(i+1)+'</span>'+dotOf(t.status,false)
+      +'<span class="ct">'+esc(t.content)+tagOf(t.status,false)+'</span>'
+      +'<span class="exp" data-act="exp" tabindex="0" role="button" aria-expanded="'+(open?'true':'false')+'" title="展开 / 收起该步详情"><svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M3.6 2L6.4 5L3.6 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+      +'<div class="sub">'+subOf(i,t)+'</div></li>';
+  }).join('');
+  html+='<ul class="tp-list">'+(list||'<li class="tp-item"><span class="ct muted">（当前筛选无条目）</span></li>')+'</ul></div>';
+  host.innerHTML=html;
+  const chipRow=host.querySelector('.tp-chips');
+  if(chipRow)chipRow.addEventListener('click',e=>{const b=e.target.closest('button');if(b){e.stopPropagation();r2Filter=b.dataset.f;renderR2Panel(r2State,r2Todos,r2Extra);}});
+  host.onclick=e=>{
+    const head=e.target.closest('.tp-head');
+    if(e.target.closest('[data-act="more"]')){e.stopPropagation();toggleR2Menu(head);return;}
+    if(e.target.closest('[data-act="fold"]')){r2Folded=!r2Folded;renderR2Panel(r2State,r2Todos,r2Extra);return;}
+    const item=e.target.closest('.tp-item');
+    if(item&&(e.target.closest('[data-act="exp"]')||e.target.closest('.ct'))){
+      const ix=+item.dataset.ix;r2Open[ix]=!r2Open[ix];renderR2Panel(r2State,r2Todos,r2Extra);return;
+    }
+    closeR2Menu();
+  };
+  setLegacy((d.done>0?'已完成 '+d.done:'')+(d.active>0?'  ·  进行中 '+d.active:'')+(d.pending>0?'  ·  待办 '+d.pending:''));
+}
+function setLegacy(pg){document.getElementById('r2-legacy-pg').textContent=pg;}
+
+let r2State='default',r2Todos=R2_TODOS,r2Extra={stepIx:4};
+document.querySelectorAll('[data-r2]').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('[data-r2]').forEach(x=>x.classList.toggle('on',x===b));
+  r2State=b.dataset.r2;r2Filter='all';
+  const todos=JSON.parse(JSON.stringify(R2_TODOS));
+  if(r2State==='done')todos.forEach(t=>t.status='completed');
+  r2Todos=todos;
+  renderR2Panel(r2State,r2Todos,r2State==='interrupt'?{at:4,item:'拉取站点 4 首页快照'}:{stepIx:4});
+}));
+document.getElementById('r2-stream').addEventListener('click',()=>{
+  document.querySelectorAll('[data-r2]').forEach(x=>x.classList.toggle('on',x.dataset.r2==='doing'));
+  r2State='doing';r2Filter='all';
+  const todos=JSON.parse(JSON.stringify(R2_TODOS));
+  /* 回放：从 2 done 起，900ms 一步 */
+  let i=0;const seq=[];
+  todos[3].status='in_progress';todos[4].status='in_progress';
+  seq.push(()=>{todos[3].status='completed';todos[5].status='in_progress';});
+  seq.push(()=>{todos[4].status='completed';todos[3].status='completed';todos[6].status='in_progress';});
+  seq.push(()=>{todos[5].status='completed';todos[6].status='completed';todos[7].status='in_progress';});
+  seq.push(()=>{todos[7].status='completed';});
+  const play=()=>{
+    if(i>=seq.length){toast('▶ 推帧结束：全部完成（真实实现每帧 ≤2s 到达）',true);return;}
+    seq[i++]();
+    const doneN=todos.filter(t=>t.status==='completed').length;
+    renderR2Panel('doing',todos,{stepIx:todos.findIndex(t=>t.status==='in_progress')+1||8});
+    play2=setTimeout(play,900);
+  };
+  clearTimeout(window.__r2play);window.__r2play=null;
+  toast('▶ 模拟 subscription 推帧：每 0.9s 一帧',true);
+  play();
+});
+document.getElementById('r2-legacy').addEventListener('click',e=>{
+  const d=document.getElementById('r2-legacy-dock');d.classList.toggle('show');
+  e.currentTarget.classList.toggle('on',d.classList.contains('show'));
+  toast(d.classList.contains('show')?'兼容开关开：旧位置面板与新 tab 同数据源双视图（R2-08）':'兼容开关关（默认）');
+});
+
+/* 右侧栏 tab 通用切换（两屏共用交互） */
+document.querySelectorAll('.r-tabs').forEach(tabs=>tabs.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b||!b.dataset.t)return;
+  tabs.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  const body=tabs.parentElement.querySelector('.r-body');
+  body.querySelectorAll('.r-pane').forEach(p=>p.classList.toggle('on',p.dataset.p===b.dataset.t));
+}));
+
+function r3EnhanceCard(){
+  const card=document.querySelector('#r3-chat .rollover');if(!card)return;
+  card.classList.add('summary-collapsed');
+  const toggle=el('<button class="summary-toggle" aria-expanded="false">展开全部</button>');
+  toggle.onclick=()=>{const folded=card.classList.toggle('summary-collapsed');toggle.textContent=folded?'展开全部':'收起摘要';toggle.setAttribute('aria-expanded',!folded);};card.appendChild(toggle);
+  const details=card.querySelector('details');if(details){const copy=el('<button class="summary-toggle">复制快照</button>');copy.onclick=()=>navigator.clipboard.writeText(details.querySelector('pre').textContent).then(()=>toast('快照已复制')).catch(()=>toast('复制不可用，请手动选择 JSON'));details.appendChild(copy);}
+}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('#r3-panel .tp-menu').forEach(m=>m.hidden=true);});
+/* ================= R3 场景 ================= */
+const R3_TODOS=[
+ {content:'确认 8 站点巡检范围与昨天的对照口径',status:'completed'},
+ {content:'巡检脚本改造：支持超时重试与截图留存',status:'completed'},
+ {content:'完成站点 1-3 巡检（首页/延迟/日志）',status:'completed'},
+ {content:'站点 4 登录态深度巡检（SSO 流程）',status:'in_progress'},
+ {content:'站点 5 深度巡检',status:'pending'},
+ {content:'汇总 8 站点对比报表（含昨日）',status:'pending'},
+ {content:'报表发送到「运营值班」群',status:'pending'},
+ {content:'归档截图到 workspace/reports/',status:'pending'},
+];
+const r3=Object.assign({round:9,rolled:false,view:'s0',carryStep:0,folded:false,legacy:false,filter:'all',sessions:[
+  {id:'s0',name:'每日巡检',cluster:'每日巡检',vol:0,round:9,readonly:false,sel:true},
+]},(()=>{try{return JSON.parse(localStorage.getItem('dsh-r3-demo-v1')||'null')||{}}catch{return {}}})());
+function r3RenderSessions(){
+  const host=document.getElementById('r3-sessions');host.innerHTML='';
+  r3.sessions.forEach(s=>{
+    const tags=[];
+    if(s.readonly)tags.push('<span class="badge-mini gray">只读</span>');
+    if(s.vol>0)tags.push('<span class="badge-mini">卷 '+s.vol+'/9</span>');
+    if(s.sel)tags.push('');
+    const it=el('<button class="item'+(s.id===r3.view?' on':'')+'" data-sid="'+s.id+'">'
+      +'<span class="nm"><b>'+esc(s.name)+'</b>'+tags.join('')+'</span>'
+      +'<small>'+(s.readonly?'已分卷 · 只读 · 停在 第 '+s.round+' 轮':(s.id==='s0'?'第 '+s.round+' 轮 · 阈值 10':(s.id==='s2'?'进行中 · 续接自卷 '+(s.vol-1):'空闲 · 占用名称')))+'</small></button>');
+    it.addEventListener('click',()=>r3Switch(s.id));
+    host.appendChild(it);
+  });
+}
+function r3Head(){
+  const h=document.getElementById('r3-chat-head');
+  const s=r3.sessions.find(x=>x.id===r3.view);
+  if(r3.view==='s0'&&!r3.rolled){h.innerHTML='<span class="t">'+esc(s.name)+'</span><span class="chip">第 '+s.round+' 轮 / 阈值 10</span><span class="chip">口径：一条用户消息 = 1 轮</span>';}
+  else if(r3.view==='s0'&&r3.rolled){h.innerHTML='<span class="t">每日巡检-1</span><span class="chip" style="color:var(--warn);border-color:var(--warn)">'+(s.readonly?'归档只读':'归档 · 已恢复写入')+'</span><span class="chip">历史全景保留</span>';}
+  else{const prev=r3.sessions.find(x=>x.id==='s0')||{round:10};h.innerHTML='<span class="t">'+esc(s?s.name:'每日巡检-2')+'</span><span class="chip">上轮：巡检-1 第 '+prev.round+' 轮</span><span class="chip">本卷：'+esc(s.name)+' 第 '+s.round+' 轮</span><span class="chip">卷标 '+s.vol+'/9</span>';}
+}
+function r3Chat(){
+  const c=document.getElementById('r3-chat');
+  if(r3.view==='s0'&&!r3.rolled){
+    c.innerHTML=
+      '<div class="msg user"><span class="who">用户 · 第 1 轮</span><div class="bub">开始每日巡检：8 个站点，首页可用性 / 接口延迟 / 日志异常，对比昨天，报表发运营值班群。步骤自己拆。</div></div>'
+     +'<div class="msg"><span class="who">巡检 Bot</span><div class="bub">已建立 8 步待办清单（右侧栏「任务进度」可见）。当前进行到第 4 步：站点 4 登录态深度巡检。</div></div>'
+     +(r3.round>=10?'<div class="msg sys"><div class="bub">第 10 轮回合结束 · 触发自动分卷检查 →（阈值已满足，见左栏命名变化）</div></div>':'')
+     +'<div class="msg user"><span class="who">用户 · 第 9 轮</span><div class="bub">站点 3 昨晚发布过，重点看下兼容性。</div></div>';
+    c.scrollTop=c.scrollHeight;return;
+  }
+  if(r3.view==='s0'&&r3.rolled){
+    c.innerHTML=
+      '<div class="msg user"><span class="who">用户 · 第 10 轮（末轮）</span><div class="bub">跑完这轮先到这。</div></div>'
+     +'<div class="msg"><span class="who">巡检 Bot</span><div class="bub">好的。第 4 步「站点 4 登录态深度巡检」仍未完成，已随快照带入「'+(r3.sessions.find(s=>s.id==='s2')||{name:'每日巡检-2'}).name+'」，那边从第 4 步继续。</div></div>'
+     +'<div class="msg sys"><div class="bub">本会话已于 12:47 归档为卷 1（只读）。写入需求请用同簇「'+(r3.sessions.find(s=>s.id==='s2')||{name:'每日巡检-2'}).name+'」，或点输入框上方开关恢复写入。</div></div>';
+    return;
+  }
+  /* s2 = 巡检-2 */
+  const done4=r3.carryStep>=1;
+  c.innerHTML=
+    '<div class="rollover">'
+    +'<div class="rh"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M8 1L3 6M8 1l5 5" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" transform="rotate(180 8 8)"/></svg>'
+    +'<b>接续摘要</b><span class="sp"></span><span class="src">承自 <a href="javascript:void(0)" onclick="r3Switch(\'s1\')">每日巡检-1</a></span></div>'
+    +'<div class="rsec"><div class="k">① 上轮工作摘要</div><div class="v">卷 1 共 10 轮：确认巡检范围与对照口径 → 改造巡检脚本（超时重试+截图留存）→ 完成站点 1-3 巡检。站点 3 昨晚发布过，用户要求重点看兼容性（已查，无回归）。</div></div>'
+    +'<div class="rsec"><div class="k">② 当前工作（Current Work）</div><div class="v"><span class="hl-step">第 4 步进行中</span>：站点 4 登录态深度巡检（SSO 流程）'+'。新会话将从这一步继续。</div></div>'
+    +'<div class="rsec"><div class="k">③ 关键约束与禁令（原文摘录，不总结）</div><div class="v">「报表发运营值班群」「步骤自己拆」——未识别到其他显式禁令。</div></div>'
+    +'<div class="rsec"><div class="k">④ 文件与代码（Files and Code）</div><div class="v"><code>workspace/inspect/probe.mjs</code>（新增 timeout+重试）· <code>workspace/reports/day-1103.md</code>（草稿，未更新）</div></div>'
+    +'<div class="rsec"><div class="k">⑤ 未竟后台 job（Pending Jobs）</div><div class="v">job <code>bg-sso-harvest</code>：运行中 · 句柄已随交接写入，标「待收」（B2：不为分卷拆正在跑的 job）。</div></div>'
+    +'<div class="rsec"><div class="k">⑥ 待办快照（人读 + 机器可读，与 R2 同一投影源）</div><div class="v">8 项：3 完成 · <b style="color:var(--accent)">1 进行中（第 4 步）</b> · 4 待办。原样快照带入，模型可自行调整（Q4 建议默认）。</div>'
+    +'<details><summary>展开快照 JSON（供 -2 直接续跑）</summary><pre>'+esc(JSON.stringify({cluster:'每日巡检',vol:2,from:'每日巡检-1',todos:R3_TODOS},null,1))+'</pre></details></div>'
+    +'<div class="rsec"><div class="k">⑦ 簇标识</div><div class="v">clusterId=daily-inspect · seq=2 · 同簇上限 9 卷（B11）</div></div>'
+    +'<div class="rsec"><div class="k">⑧ 交接健康</div><div class="v">摘要生成 1 次成功（重试计数 0/2）· 快照逐项比对一致（AC-R3-2）</div></div>'
+    +'</div>'
+    +(done4
+      ?'<div class="msg"><span class="who">巡检 Bot · 续接</span><div class="bub">第 4 步已完成：站点 4 SSO 登录巡检通过。继续第 5 步（站点 5 深度巡检），进度条已更新 4/8。</div></div>'
+      :'<div class="msg sys"><div class="bub">续接就绪 · 上方摘要即 -2 首页第一条消息（D-4）。点顶部「在 -2 继续一轮」模拟模型按快照续跑。</div></div>');
+}
+function r3Composer(){
+  const w=document.getElementById('r3-composer-wrap');
+  if(r3.view==='s0'&&r3.rolled){
+    const old=r3.sessions[0],ro=old.readonly;
+    w.innerHTML='<div class="ro-banner">'+(ro?'卷 1 已归档，默认只读。历史可回看。':'卷 1 已归档，已允许再次写入。')+'<button class="sw" id="ro-toggle" role="switch" aria-checked="'+(!ro)+'">'+(ro?'允许再次写入':'恢复只读')+'</button></div><div class="composer'+(ro?' disabled':'')+'"><input '+(ro?'disabled aria-disabled="true"':'aria-disabled="false"')+' placeholder="'+(ro?'归档会话：不可输入':'给 Bot 发消息…')+'"><span class="send">↑</span></div>';
+    document.getElementById('ro-toggle').onclick=()=>{old.readonly=!old.readonly;r3Switch('s0');};
+    return;
+  }
+  const todos=R3_TODOS.map((t,i)=>({...t,status:r3.view==='s2'?(i<3+r3.carryStep?'completed':i===3+r3.carryStep?'in_progress':'pending'):t.status}));
+  w.innerHTML='<div class="legacy-dock'+(r3.legacy?' show':'')+'"><div class="h"><span class="tt">待办</span><span class="pg">与右侧任务进度同源</span></div><ul>'+todos.map((t,i)=>'<li>'+esc((i+1)+'. '+t.content)+' '+tagOf(t.status,false)+'</li>').join('')+'</ul></div><div class="composer"><input placeholder="给 Bot 发消息…（原型示意）"><span class="send">↑</span></div>';
+}
+
+function r3Panel(){
+  const host=document.getElementById('r3-panel');
+  host.onclick=null;
+  const folded=!!r3.folded;
+  const cv='<span class="cv'+(folded?' fold':'')+'" data-act="fold" tabindex="0" role="button" aria-expanded="'+(folded?'false':'true')+'" title="'+(folded?'展开面板':'收起面板')+'"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 4.25L6 7.75L9.5 4.25" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
+  const head=(title,cnt,pct,chip,meta)=>'<div class="tp-head">'+(chip||'')
+    +'<div class="row1"><span class="tt">'+title+'</span><span class="cnt">'+cnt+'</span><span class="pct">'+pct+'</span>'+cv+'<button class="more" data-act="r3-more" aria-label="任务进度菜单" aria-expanded="false">⋯</button></div>'
+    +'<div class="tp-bar"><i style="width:'+pct+'"></i></div>'
+    +'<div class="tp-meta">'+meta+'</div>'
+    +'<div class="tp-folded-hint">已收起 · '+cnt+'（'+pct+'）· 点右侧 ⌄ 展开</div></div>';
+  const carryN=(r3.view==='s2'?R3_TODOS.length:0);
+  const item=(t,i,cur)=>'<li class="tp-item '+t.status+(cur?' current':'')+'" data-ix="'+i+'">'
+    +'<span class="ix">'+(i+1)+'</span>'+dotOf(t.status,false)
+    +'<span class="ct">'+esc(t.content)+tagOf(t.status,false)+(i<carryN?'<span class="tag carry">承自 -1</span>':'')+'</span>'
+    +'<span class="exp" data-act="exp" tabindex="0" role="button" aria-expanded="false" title="展开 / 收起该步详情"><svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M3.6 2L6.4 5L3.6 8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'
+    +'<div class="sub">'
+      +'<div class="kv"><span>状态</span><span>'+({completed:'已完成',in_progress:'进行中 · 模型正在做这一步',pending:'待开始'}[t.status]||'')+'</span></div>'
+      +'<div class="kv"><span>来源</span><span>'+(i<carryN?'承自 每日巡检-1 的待办快照':'本卷内新建')+'</span></div>'
+      +'<div class="kv" style="margin-top:3px"><span></span><span style="opacity:.75">只读视图：改状态请在会话里由模型 todo_write 整表更新</span></div>'
+    +'</div></li>';
+  const listOf=(todos,curIx)=>'<ul class="tp-list">'+todos.map((t,i)=>item(t,i,i===curIx)).join('')+'</ul>';
+  let inner='<div class="tp'+(folded?' folded':'')+'">';
+  if(r3.view==='s0'&&r3.rolled){
+    inner+=head('任务进度（末帧快照）','完成 3 / 共 8','37%','','归档于第 10 轮 · 投影随卷 1 冻结 · 只读')+listOf(R3_TODOS,-1);
+  }else if(r3.view==='s0'&&!r3.rolled){
+    inner+=head('任务进度','完成 3 / 共 8','37%','','更新于 1 分钟前 · 进行中 1 · 待办 4')
+      +'<div class="tp-cur">当前第 <b>4</b> 步：站点 4 登录态深度巡检（SSO 流程）</div>'+listOf(R3_TODOS,3);
+  }else{
+    const step=4+r3.carryStep, done=3+r3.carryStep, pct=Math.floor(done/8*100);
+    const todos=R3_TODOS.map((t,i)=>({...t,status:i<done?'completed':(i===done?'in_progress':'pending')}));
+    inner+=head('任务进度','完成 '+done+' / 共 8',pct+'%',
+        '<div class="tp-carry-chip">进度自动加载自 <a href="javascript:void(0)" onclick="r3Switch(\'s1\')">巡检-1</a> 末帧快照 · 续跑就绪（无需重述任务）</div>',
+        '更新于 刚刚 <span>·</span> <span style="color:var(--ok)">进度续接中</span>')
+      +'<div class="tp-cur">当前第 <b>'+step+'</b> 步：'+esc(R3_TODOS[done].content)+'</div>'+listOf(todos,done);
+  }
+  host.innerHTML=inner+'</div>';
+  const menu=el('<div class="tp-menu" hidden><button class="mi" data-op="switch">现在换会话</button><button class="mi" data-op="json">复制 JSON 快照</button><button class="mi" data-op="legacy">兼容旧面板：'+(r3.legacy?'开':'关')+'</button><button class="mi" data-op="fold">收起面板</button></div>');
+  host.querySelector('.tp').appendChild(menu);
+  host.onclick=e=>{
+    if(e.target.closest('[data-act="r3-more"]')){menu.hidden=!menu.hidden;e.target.closest('[data-act]').setAttribute('aria-expanded',!menu.hidden);return;}
+    const op=e.target.closest('[data-op]')?.dataset.op;
+    if(op){menu.hidden=true;if(op==='switch'){if(r3.rolled)toast('原型已展示一次交接。真实手动分卷由插件执行。');else r3Roll(false);}if(op==='json')navigator.clipboard.writeText(JSON.stringify(r3.view==='s2'?R3_TODOS.map((t,i)=>({...t,status:i<3+r3.carryStep?'completed':i===3+r3.carryStep?'in_progress':'pending'})):R3_TODOS,null,2)).then(()=>toast('快照已复制')).catch(()=>toast('复制不可用，请展开摘要 JSON 手动复制'));if(op==='legacy'){r3.legacy=!r3.legacy;r3Composer();r3Panel();}if(op==='fold'){r3.folded=true;r3Panel();}localStorage.setItem('dsh-r3-demo-v1',JSON.stringify(r3));return;}
+    if(e.target.closest('[data-act="fold"]')){r3.folded=!r3.folded;localStorage.setItem('dsh-r3-demo-v1',JSON.stringify(r3));r3Panel();return;}
+    const li=e.target.closest('.tp-item');
+    if(li&&(e.target.closest('[data-act="exp"]')||e.target.closest('.ct'))){li.classList.toggle('open');li.querySelector('.exp').setAttribute('aria-expanded',li.classList.contains('open'));}
+  };
+}
+function r3Switch(id){
+  if(id==='s1')id='s0';
+  r3.view=id;
+  localStorage.setItem('dsh-r3-demo-v1',JSON.stringify(r3));
+  document.getElementById('r3-carry').disabled=!r3.rolled;
+  document.getElementById('r3-view1').disabled=!r3.rolled;
+  document.getElementById('r3-view2').disabled=!r3.rolled;
+  document.getElementById('r3-round-n').textContent=r3.rolled?'已分卷':r3.sessions[0].round+' / 10';
+  r3RenderSessions();r3Head();r3Chat();r3EnhanceCard();r3Composer();r3Panel();
+  document.getElementById('r3-view1').classList.toggle('on',id==='s0'&&r3.rolled);
+  document.getElementById('r3-view2').classList.toggle('on',id==='s2');
+}
+document.getElementById('r3-view1').addEventListener('click',()=>{if(r3.rolled)r3Switch('s1');});
+document.getElementById('r3-view2').addEventListener('click',()=>{if(r3.rolled)r3Switch('s2');});
+document.getElementById('r3-round').addEventListener('click',()=>{
+  const s=r3.sessions[0];
+  if(s.round>=10){toast('已在第 10 轮（回合已结束）。点「在 -2 继续一轮」或直接看分卷结果。');return;}
+  s.round++;document.getElementById('r3-round-n').textContent=s.round+' / 10';
+  r3RenderSessions();r3Head();r3Chat();r3EnhanceCard();
+  if(s.round>=10){
+    /* 回合结束 → agent/pre-step：触发分卷 */
+    setTimeout(()=>r3Roll(false),350);
+  } else toast('第 '+s.round+' 轮完成（一条用户消息=1 轮）');
+});
+function r3Roll(conflict){
+  if(r3.rolled)return;
+  const s=r3.sessions[0];
+  s.name='每日巡检-1';s.readonly=true;s.vol=1;s.sel=false;s.round=Math.max(s.round,10);
+  const conflictHit=conflict;
+  const newName=conflictHit?'每日巡检-3':'每日巡检-2';
+  if(conflictHit){r3.sessions.push({id:'sX',name:'每日巡检-2',cluster:'每日巡检',vol:0,round:0,readonly:false,sel:false,note:'名称被外部会话占用（演示前提）'});}
+  r3.sessions.push({id:'s2',name:newName,cluster:'每日巡检',vol:2,round:0,readonly:false,sel:true});
+  r3.rolled=true;r3.view='s2';
+  document.getElementById('r3-round-n').textContent='10 / 10 → 已分卷';
+  document.getElementById('r3-carry').disabled=false;
+  document.getElementById('r3-view1').disabled=false;document.getElementById('r3-view2').disabled=false;
+  r3Switch('s2');
+  toast('<b>分卷完成</b>：旧会话改名「每日巡检-1」（转只读），新会话「'+newName+'」已创建并选中（AC-R3-1）',true);
+  if(conflictHit)toast('已存在「每日巡检-2」→ 名称顺延为「每日巡检-3」，但<b>簇内卷标仍记真实卷序 卷 2/9</b><span class="muted">（B7 · 已写日志）</span>');
+  else toast('八段摘要 + 待办快照已注入新会话首条消息（AC-R3-2）· 第 4 步进行中（AC-R3-3）',true);
+}
+document.getElementById('r3-carry').addEventListener('click',()=>{
+  if(!r3.rolled){toast('先跑满 10 轮触发分卷');return;}
+  if(r3.carryStep>=1){toast('演示到第 5 步为止：进度已 4/8，后续同构');return;}
+  r3.carryStep=1;r3.sessions.find(s=>s.id==='s2').round++;if(r3.view!=='s2')r3.view='s2';localStorage.setItem('dsh-r3-demo-v1',JSON.stringify(r3));
+  r3Head();r3Chat();r3EnhanceCard();r3Composer();r3Panel();
+  toast('模型在 -2 按快照续跑：第 4 步完成，进度条 4/8，第 5 步进行中',true);
+});
+document.getElementById('r3-conflict').addEventListener('click',()=>{
+  if(r3.rolled){toast('本演示已分卷完成。冲突规则：'+ (r3.sessions.some(x=>x.name==='每日巡检-3')?'已触发过（-3 已顺延并写日志）':'未触发；下次分卷若 -2 占位将顺延') +'。');return;}
+  r3Roll(true);
+});
+document.getElementById('r3-reset').addEventListener('click',()=>{
+  Object.assign(r3,{rolled:false,view:'s0',carryStep:0,folded:false,legacy:false,filter:'all',sessions:[{id:'s0',name:'每日巡检',cluster:'每日巡检',vol:0,round:9,readonly:false,sel:true}]});
+  document.getElementById('r3-round-n').textContent='9 / 10';
+  document.getElementById('r3-carry').disabled=true;
+  document.getElementById('r3-view1').disabled=true;document.getElementById('r3-view2').disabled=true;
+  document.getElementById('r3-view1').classList.remove('on');document.getElementById('r3-view2').classList.add('on');
+  r3Switch('s0');
+  toast('演示已重置：回到第 9/10 轮（阈前一轮）',true);
+});
+
+/* 初始渲染 */
+renderR2Panel('default',R2_TODOS,{});
+r3Switch(r3.view);
+</script>
+</body>
+</html>

@@ -3,7 +3,21 @@
 export const SEGMENT_MARKER = /\[(?:Checkpoint \d+|Handoff(?: · part)? \d+)\]/;
 
 export function markersFound(messages) {
-    return messages.some((m) => m && typeof m.text === 'string' && SEGMENT_MARKER.test(m.text));
+    return messages.some((m) => m && !m.internal && m.type !== 'system/message' && typeof m.text === 'string' && SEGMENT_MARKER.test(m.text));
+}
+
+/** 压缩正在执行时不并发建卷；forceAuto 只豁免标记降级，不豁免安全切点。 */
+export function transitionInFlight(events) {
+    const open = new Map();
+    for (const e of events) {
+        const type = e.type ?? e.kind;
+        if (!/^(compaction|part)\/(start|end)$/.test(type)) continue;
+        const [kind, phase] = type.split('/');
+        const key = `${kind}:${e.data?.id ?? e.data?.turn ?? ''}`;
+        if (phase === 'start') open.set(key, true);
+        else open.delete(key);
+    }
+    return open.size > 0;
 }
 
 /**

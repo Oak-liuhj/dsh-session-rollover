@@ -1,14 +1,14 @@
 // 服务端插件：注册服务、拦截只读旧卷、调度自动/手动分卷与告警。
 import {appendFileSync, mkdirSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {countTurns, DEFAULT_THRESHOLD} from '../domain/turns.mjs';
+import {countTurns, hasOpenTurn, DEFAULT_THRESHOLD} from '../domain/turns.mjs';
 import {createClusterIndex} from '../domain/cluster-index.mjs';
 import {attachFilePersistence, resolveDataDir} from '../storage/index-store.mjs';
 import {createRolloverState} from '../storage/rollover-state.mjs';
 import {performRollover} from '../application/rollover.mjs';
-import {buildSummarySegments} from '../domain/summary.mjs';
+import {textOf} from '../domain/summary.mjs';
+import {transitionInFlight} from '../domain/mode.mjs';
 import {createNoticeStore} from '../storage/notices.mjs';
-import {lastTodos} from '../domain/todos.mjs';
 import {createHostAdapter} from './host-adapter.mjs';
 import {attachNoticeRoutes, handlePendingNotices} from './notice-route.mjs';
 
@@ -24,6 +24,9 @@ const NOTICE_TEXT = {
     'manual-pending': '已到分卷阈值：manual 模式下自动分卷已暂停，可手动发起分卷。',
     'retry-limit': '分卷摘要连续失败，已停止自动重试；原会话名与内容保持不变。',
     'summary-error': '分卷摘要连续失败，已停止自动重试；原会话名与内容保持不变。',
+    'cluster-cap': '同簇已达 9 卷上限，请新建独立会话继续。',
+    'storage-unavailable': '分卷数据目录不可写，已保留原会话，请检查目录后重试。',
+    'user-renamed': '已保留手动设置的会话名称。',
 };
 
 /**
@@ -39,7 +42,7 @@ const NOTICE_TEXT = {
  * 自动与手动入口共用会话锁；宿主服务转换与提示路由分别委托给独立模块。
  */
 export default class SessionRolloverPlugin {
-    static inject = ['sessions', 'sessionTitle', 'sessionController', 'sessionProjections', 'workspaceRegistry'];
+    static inject = ['sessions', 'sessionTitle', 'sessionController', 'sessionProjections', 'workspaceRegistry', 'connection'];
 
     /**
      * @param {object} ctx 宿主服务容器
@@ -47,6 +50,13 @@ export default class SessionRolloverPlugin {
      */
     constructor(ctx, config = {}) {
         this.ctx = ctx;
+        this.services = typeof ctx.inject === 'function' ? {} : ctx;
+        if (ctx.inject) {
+            for (const name of ['jobs', 'agentDefaultModel']) ctx.inject([name], scope => {
+                this.services[name] = scope[name];
+                scope.effect?.(() => () => { delete this.services[name]; });
+            });
+        }
         this.config = {mode: 'auto', threshold: DEFAULT_THRESHOLD, ...config};
         this.dataDir = resolveDataDir({configDir: this.config.dataDir, env: process.env});
         this.index = createClusterIndex();
@@ -54,17 +64,25 @@ export default class SessionRolloverPlugin {
         this.state = createRolloverState(this.dataDir);
         // B6：去重键＋「未发显」队列落盘（与 readonly 开关同目录），server 侧不再 append 系统消息
         this.notices = createNoticeStore(this.dataDir);
+        this.state.modelFallback = id => this.notices.queue(id, 'model-fallback', '新卷未能继承原模型，已回落默认模型。');
         this.busy = new Set();
         this.lastCheckedTurn = new Map();
         this.loadIndex();
         ctx.provide('sessionRollover', {
             rollover: (id) => this.rolloverNow(id),
             info: (id) => this.handoffInfo(id),
+            setReadonly: (id, value) => this.setReadonly(id, value),
         });
         ctx.effect(() => () => {
             this.busy.clear();
         }); // 卸载时放弃在跑的判定，不残留定时/监听
         ctx.on('agent/pre-step', (payload, next) => this.onPreStep(payload, next), {prepend: true});
+        // 用户轮次计数与执行切点分离：等真实回合/压缩结束后检查，不在模型执行中切卷。
+        ctx.on('session/event', (session, event) => {
+            if (['turn/end', 'compaction/end', 'part/end', 'tool/result'].includes(event.type ?? event.kind)) {
+                queueMicrotask(() => void this.maybeRollover({agent: {session}}).catch(e => this.log('error', {error: String(e.message)})));
+            }
+        });
         this.attachRoutes(ctx);
         this.log('boot', {
             dataDir: this.dataDir, mode: this.config.mode, threshold: this.config.threshold,
@@ -77,6 +95,7 @@ export default class SessionRolloverPlugin {
         attachNoticeRoutes(ctx, {
             handlePending: (req, res) => this.handlePending(req, res),
             log: (event, data) => this.log(event, data),
+            plugin: this,
         });
     }
 
@@ -87,10 +106,12 @@ export default class SessionRolloverPlugin {
         }, req, res);
     }
 
-    /** 索引=缓存：读盘回灌；坏文件/无文件 → 空索引，靠 rebuild 对账（不抛） */
+    /** 索引=缓存：回灌后用已注入且未废弃的交接补齐缺项，不按任意 -N 标题猜测。 */
     loadIndex() {
         try {
             const doc = JSON.parse(readFileSync(this.persistence.path, 'utf8'));
+            if (!doc.sessions || typeof doc.sessions !== 'object' || Array.isArray(doc.sessions) ||
+                Object.values(doc.sessions).some(r => !r?.cluster_id || !Number.isInteger(r.vol_no))) throw new Error('invalid-index');
             for (const [sessionId, r] of Object.entries(doc.sessions ?? {})) {
                 this.index.record({
                     sessionId, clusterId: r.cluster_id, parentSessionId: r.parent_session_id,
@@ -99,8 +120,53 @@ export default class SessionRolloverPlugin {
                 });
             }
             if (doc.turn_counts) this.index.setTurnCounts(doc.turn_counts);
-        } catch { /* 首启/坏文件：空索引 */
+        } catch { /* 缺失/坏文件继续从可信交接重建。 */ }
+        this.reconcileIndex();
+    }
+
+    /** 启动修复缓存缺项；失败注入产生的待清理卷不参与有效父链。 */
+    reconcileIndex() {
+        let changed = false;
+        const abandoned = new Set(this.state.pendingList().map(r => r.sessionId));
+        const snapshots = new Map();
+        for (const session of this.ctx.sessions.list()) {
+            if (abandoned.has(session.id)) continue;
+            let h;
+            for (const e of session.snapshotEvents()) {
+                const text = textOf(e);
+                if (!text.startsWith('【分卷交接】')) continue;
+                try { h = JSON.parse(/```json\s*([\s\S]*?)```/.exec(text)?.[1]); } catch { /* 非本插件快照 */ }
+                if (h?.rollover === 'v1') { try { this.state.handoffSave(session.id, h); } catch {} break; }
+            }
+            if (h?.rollover === 'v1' && h?.cluster?.cluster_id) snapshots.set(session.id, h);
         }
+        const depth = (id, seen = new Set()) => {
+            if (seen.has(id)) return 1;
+            seen.add(id);
+            const h = snapshots.get(id);
+            return h ? h.cluster.vol_no || (h.cluster.independent ? 1 : depth(h.from_session_id, seen) + 1) : 1;
+        };
+        for (const [sessionId, h] of snapshots) {
+            const volume = depth(sessionId);
+            const parent = h.cluster.independent ? null : h.from_session_id;
+            const parentRec = parent && this.index.get(parent);
+            if (parent && (!parentRec || parentRec.rollover_state !== 'sealed')) {
+                changed = true;
+                this.index.record({sessionId: parent, clusterId: h.cluster.cluster_id,
+                    parentSessionId: parentRec?.parent_session_id, volNo: volume - 1,
+                    nameSuffix: parentRec?.name_suffix ?? '', rolloverState: 'sealed',
+                    readonlyByRollover: this.state.readonlyRecord(parent)?.readonly ?? true,
+                    summaryRetry: parentRec?.summary_retry ?? 0});
+            }
+            const own = this.index.get(sessionId);
+            if (!own) {
+                changed = true;
+                this.index.record({sessionId, clusterId: h.cluster.cluster_id,
+                    parentSessionId: parent, volNo: volume, nameSuffix: h.to_session_title?.match(/-\d+$/)?.[0] ?? '',
+                    rolloverState: 'active', readonlyByRollover: false});
+            }
+        }
+        if (changed) this.persistence.persist();
     }
 
     log(event, data = {}) {
@@ -135,12 +201,40 @@ export default class SessionRolloverPlugin {
     handoffInfo(id) {
         const record = this.index.get(id);
         const handoff = this.state.handoffGet(id);
-        const parent = handoff?.from_session_id ?? record?.parent_session_id;
+        const parent = handoff?.cluster?.independent ? null : handoff?.from_session_id ?? record?.parent_session_id;
         let title = handoff?.from_title || parent;
         const source = parent && this.sessionOf(parent);
         if (source) title = this.ctx.sessionTitle.get(source)?.title || title;
+        const session = this.sessionOf(id);
+        const events = session?.snapshotEvents() ?? [];
+        const sealed = record?.rollover_state === 'sealed';
+        const turnCount = countTurns(events);
+        const children = record ? this.index.cluster(record.cluster_id).filter(r => r.parent_session_id === id) : [];
+        const retry = this.state.retryGet(id).attempts;
         return {source: parent ? {sessionId: parent, title} : null, handoff,
-            readonly: this.state.isReadonly(id)};
+            readonly: this.isReadonly(id), sealed, sessionId: id,
+            title: session ? this.ctx.sessionTitle.get(session)?.title ?? '' : '',
+            turnCount, threshold: this.config.threshold, volume: record?.vol_no ?? null, cap: 9,
+            capped: record?.vol_no >= 9, summaryRetry: retry,
+            retryLimitReached: retry >= 3, degraded: this.persistence.degraded || !!this.stateDegraded?.has(id),
+            previousTurnCount: parent && this.sessionOf(parent) ? countTurns(this.sessionOf(parent).snapshotEvents()) : null,
+            nextSessionId: children[0]?.sessionId ?? null};
+    }
+
+    isReadonly(id) {
+        const per = this.state.readonlyRecord(id);
+        return per ? per.readonly !== false : this.state.isReadonly(id) || !!this.index.get(id)?.readonly_by_rollover;
+    }
+
+    setReadonly(id, readonly) {
+        if (typeof readonly !== 'boolean') throw new Error('readonly must be boolean');
+        if (!this.sessionOf(id)) throw new Error('session-unavailable');
+        const rec = this.index.get(id);
+        if (rec?.rollover_state !== 'sealed') throw new Error('session-not-archived');
+        this.state.setReadonly(id, readonly);
+        rec.readonly_by_rollover = readonly;
+        this.persistence.persist();
+        return this.handoffInfo(id);
     }
 
     /** 显式手动分卷：绕过轮次/模式门槛，仍执行只读、子会话与工具安全检查。 */
@@ -151,17 +245,15 @@ export default class SessionRolloverPlugin {
         if (this.index.get(id)?.rollover_state === 'sealed') return {status: 'skipped', reason: 'readonly'};
         this.busy.add(inflightKey(id));
         try {
-            const events = session.snapshotEvents();
+            try { this.state.retrySave(id, 0); } catch (e) {
+                return {status: 'failed', reason: 'storage-unavailable', error: String(e.message)};
+            } // 显式人工操作开始一次新尝试，不恢复无限自动重试。
             const host = this.hostFor(session);
-            const todos = await host.getTodos(id);
-            const activeIndexes = todos.flatMap((t, i) => t.status === 'in_progress' ? [i + 1] : []);
-            const jobs = await host.listRunningJobs(id);
-            const currentStepIndex = activeIndexes[0] ?? null;
-            return await performRollover({host, sessionId: id, index: this.index,
+            const result = await performRollover({host, sessionId: id, index: this.index,
                 persistence: this.persistence, state: this.state, config: this.config, manual: true,
-                summarySegments: buildSummarySegments({events, todos, jobs, currentStepIndex}),
-                currentStepIndex, activeIndexes,
             });
+            this.afterResult(session, result);
+            return result;
         } finally { this.busy.delete(inflightKey(id)); }
     }
 
@@ -169,6 +261,7 @@ export default class SessionRolloverPlugin {
     hostFor(session) {
         return createHostAdapter({
             ctx: this.ctx, session, state: this.state,
+            services: this.services,
             sessionOf: (id) => this.sessionOf(id),
             log: (event, data) => this.log(event, data),
         });
@@ -182,7 +275,7 @@ export default class SessionRolloverPlugin {
         // AC-R3-7 服务端闸：-1 旧卷只读，连触发都不许（宿主约定 pre-step 返回 {kind:'reject'} → 本回合 blocked）
         const sid = payload?.agent?.session?.id;
         try {
-            if (firstStep && sid && this.state.isReadonly(sid)) {
+            if (firstStep && sid && this.isReadonly(sid)) {
                 this.readonlyBlocked ??= new Set();
                 if (!this.readonlyBlocked.has(sid)) {
                     this.readonlyBlocked.add(sid);
@@ -222,6 +315,7 @@ export default class SessionRolloverPlugin {
         } catch { /* 索引读不到不阻断判定 */
         }
         const events = session.snapshotEvents();
+        if (hasOpenTurn(events) || transitionInFlight(events)) return;
         const turns = countTurns(events);
         this.seen ??= new Set();
         if (!this.seen.has(id)) {
@@ -229,21 +323,21 @@ export default class SessionRolloverPlugin {
             this.log('pre-step-seen', {sessionId: id, turns, events: events.length});
         }
         if (turns < this.config.threshold) return;
+        if (this.state.retryGet(id).attempts >= 3) {
+            this.notifyOnce(session, {reason: 'retry-limit'});
+            return;
+        }
         if (this.lastCheckedTurn.get(id) === turns) return; // 同一轮次不重复试探
         this.lastCheckedTurn.set(id, turns);
         this.busy.add(inflightKey(id));
         try {
             // 待办取日志最后一次 todo/write：此刻 turn/start 已把实时投影清零（见 domain/todos.mjs）。
-            const todos = lastTodos(events);
-            const stepIndex = todos.findIndex((t) => t.status === 'in_progress') + 1 || null;
-            const summarySegments = buildSummarySegments({events, todos, jobs: [], currentStepIndex: stepIndex});
             const res = await performRollover({
                 host: this.hostFor(session), sessionId: id, index: this.index,
                 persistence: this.persistence, state: this.state, config: this.config,
-                summarySegments, currentStepIndex: stepIndex,
-                activeIndexes: stepIndex ? [stepIndex] : [],
-                constraints: [], // 由 summary 段的「约束」承担原文摘录；这里不二次总结
             });
+            if (res.reason === 'unsafe-cut-point' || res.reason === 'transition-in-flight') this.lastCheckedTurn.delete(id);
+            this.afterResult(session, res);
             if (res.status === 'rolled-over') {
                 this.log('rolled-over', {
                     from: id,
@@ -252,8 +346,6 @@ export default class SessionRolloverPlugin {
                     bytes: res.handoffBytes
                 });
                 // B6：成功一次即清该会话去重键（否则键只增不减，后续真失败会被历史键吃掉）
-                const cleared = this.notices.clearSession(id);
-                if (cleared.dedupe || cleared.pending) this.log('notice-dedupe-cleared', {sessionId: id, ...cleared});
             } else {
                 this.log('not-rolled-over', {
                     sessionId: id,
@@ -269,6 +361,36 @@ export default class SessionRolloverPlugin {
         } finally {
             this.busy.delete(inflightKey(id));
         }
+    }
+
+    afterResult(session, result) {
+        try {
+            if (result.status === 'rolled-over') {
+                this.lastCompleted ??= new Map();
+                this.lastCompleted.set(session.id, result.newSessionId);
+                try { this.ctx.emit?.('rollover/completed', {fromSessionId: session.id, sessionId: result.newSessionId}); } catch {}
+                this.state.retrySave(session.id, 0);
+                this.notices.clearSession(session.id);
+                this.notices.queue(session.id, 'completed', '分卷完成，已创建接续会话。');
+            } else if (['oversize', 'summary-missing', 'summary-error', 'summary-too-long'].includes(result.reason)) {
+                const n = this.state.retryGet(session.id).attempts + 1;
+                this.state.retrySave(session.id, n);
+                const rec = this.index.get(session.id);
+                if (rec) { rec.summary_retry = n; this.persistence.persist(); }
+                if (n >= 3) result.reason = 'retry-limit';
+            }
+            if (result.degraded) {
+                this.stateDegraded ??= new Set();
+                for (const id of [session.id, result.newSessionId].filter(Boolean)) this.stateDegraded.add(id);
+            }
+        } catch (e) {
+            // 会话已经建成时，通知或重试状态落盘失败不能把成功结果翻成失败后再次建卷。
+            result.degraded = true;
+            this.stateDegraded ??= new Set();
+            for (const id of [session.id, result.newSessionId].filter(Boolean)) this.stateDegraded.add(id);
+            this.log('state-degraded', {sessionId: session.id, error: String(e.message)});
+        }
+        if (result.status === 'failed' || result.notice) this.notifyOnce(session, result);
     }
 
     /**

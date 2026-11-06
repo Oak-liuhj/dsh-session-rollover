@@ -6,7 +6,12 @@ import {textOf} from '../domain/summary.mjs';
  *  宿主真实事件把用户正文放在 data.content[].text（user/message、assistant/message），
  *  只有测试夹具用扁平 {text}；三种形态都读，否则 markers 在真机恒 false（AC-R3-9 实拍发现的缺陷）。 */
 export function eventsToMessages(events) {
-    return events.map((e) => ({text: textOf(e)}));
+    return events.map((e) => {
+        const type = e.type ?? e.kind;
+        const source = e.data?.source ?? e.source;
+        return {type, text: textOf(e), internal: textOf(e).startsWith('【分卷交接】') ||
+            (type === 'user/message' && !!source?.kind && source.kind !== 'user')};
+    });
 }
 
 /**

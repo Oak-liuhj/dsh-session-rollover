@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "host": "Installed DSH web profile (isolated home)",
+  "model": "local OpenAI-compatible fixture, not a real model",
+  "oldId": "session-3787ec68-6c4f-4b19-9b36-ded3ed0eeb45",
+  "newId": "session-5d41f38d-2759-465c-b2d9-f26292fb2b8d",
+  "rounds": {
+    "verifiedPersistedHumanMessages": 10,
+    "verification": "resumed final UI checks on existing completed rollover"
+  },
+  "old": {
+    "turns": 10,
+    "readonly": true,
+    "volume": 1
+  },
+  "next": {
+    "turns": 0,
+    "volume": 2,
+    "todoCount": 8,
+    "currentStep": 4
+  },
+  "checks": [
+    "10 actual human messages -> one rollover",
+    "native context excluded",
+    "inline first-message card",
+    "exact snapshot and clipboard",
+    "model tool continuation step4 -> step5",
+    "source navigation remains in old volume",
+    "composer blocked",
+    "switch on/off persists across refresh",
+    "sidebar badges on legacy host leading slot",
+    "real host dark theme",
+    "no browser errors"
+  ],
+  "errors": [],
+  "requests": []
+}

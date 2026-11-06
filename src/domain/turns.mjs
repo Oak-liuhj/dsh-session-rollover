@@ -1,24 +1,26 @@
 // dsh-session-rollover · 轮次计数与触发（接口契约 §3.1；纯逻辑）
-// 从完整事件日志统计：优先 turn/end，其次 turn/start，最后兼容仅含 user/message 的旧日志；step 不计。
+// 一条用户消息=一轮；内部 turn/step 不计。安全切点由 hasOpenTurn 独立判断。
 // 事件判别字段：session.v4 落盘事件用 `type`，内存/夹具事件历史上用 `kind` —— 两种都认（实机踩坑：只认 kind 会数成 0）
 export const DEFAULT_THRESHOLD = 10;
 export const eventType = (e) => e?.type ?? e?.kind;
 
-/** 优先返回已完成轮数；前一种计数为 0 时才回退到后一种事件口径。 */
+/** 宿主也用 user/message 记录时间、技能目录等上下文；它们不是用户发言。 */
+export function isUserMessage(e) {
+    const source = e?.data?.source ?? e?.source;
+    return eventType(e) === 'user/message' && (!source?.kind || source.kind === 'user') &&
+        !e?.data?.rollover && !String(e?.data?.content?.[0]?.text ?? e?.text ?? '').startsWith('【分卷交接】');
+}
+
+/** 从完整日志重建用户轮次；插件生成的交接消息不计入。 */
 export function countTurns(events) {
-    let ended = 0;
-    let started = 0;
-    let userMessages = 0;
-    for (const e of events) {
-        const t = eventType(e);
-        if (t === 'turn/end') ended++;
-        else if (t === 'turn/start') started++;
-        else if (t === 'user/message') userMessages++;
-    }
-    // 只数「已完成轮次」：pre-step 时当前轮已有 turn/start 但还没有 turn/end，
-    // 用 turn/start 会让第 10 轮当场触发、快照只含 9 轮（实机读数：第 3 步而非第 4 步）。
-    // 老事件流/合成夹具没有 turn/end 时退回 turn/start，再退回 user/message。
-    return ended || started || userMessages;
+    // B1：内部 turn/start、turn/end 的数量不代表用户发言轮数。
+    // 交接首条消息由插件生成，不占用新卷的用户轮次。
+    return events.filter(isUserMessage).length;
+}
+
+export function hasOpenTurn(events) {
+    return events.findLastIndex(e => eventType(e) === 'turn/start') >
+        events.findLastIndex(e => eventType(e) === 'turn/end');
 }
 
 /**

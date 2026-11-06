@@ -3,11 +3,12 @@
 //      → T5 注入摘要（首条 user/message）→ T6 旧卷改名 → T7 新卷改名 → T8 提交（簇索引+turn_counts+-1 只读）
 // T0–T3 不过时不创建会话、不改名；注入失败登记待清理，新卷改名失败则尝试回滚旧卷标题。
 // 依赖注入：host（宿主适配器）与 state/index/persistence（存储）都由调用方给，夹具可全内存替换真跑。
-import {countTurns, DEFAULT_THRESHOLD} from '../domain/turns.mjs';
+import {countTurns, hasOpenTurn, DEFAULT_THRESHOLD} from '../domain/turns.mjs';
 import {parseVolume, planVolumeTitles} from '../domain/naming.mjs';
-import {effectiveRolloverMode, markersFound} from '../domain/mode.mjs';
+import {effectiveRolloverMode, markersFound, transitionInFlight} from '../domain/mode.mjs';
 import {buildHandoff, MAX_BYTES} from '../domain/handoff.mjs';
 import {eventsToMessages, renderHandoffMessage} from './handoff-message.mjs';
+import {buildSummarySegments, changedFilesFrom, constraintsFrom} from '../domain/summary.mjs';
 
 /**
  * 跑一次分卷事务。host 接口（全部 async，夹具可内存实现）：
@@ -28,8 +29,8 @@ export async function performRollover({
                                           summarySegments,
                                           currentStepIndex = null,
                                           activeIndexes = [],
-                                          constraints = [],
-                                          changedFiles = [],
+                                          constraints,
+                                          changedFiles,
                                           cwd,
                                           userRenamed = false,
                                           manual = false,
@@ -47,8 +48,10 @@ export async function performRollover({
     // 只读卷（-1）一律不动：连触发都不许（AC-R3-7 的服务端闸）
     if (state?.isReadonly(sessionId)) return done('skipped', 'readonly');
 
-    // T0 轮次口径由 domain/turns.mjs 统一定义，优先使用完整日志中的已完成轮次。
+    // T0 轮次口径由 domain/turns.mjs 统一定义，统计真实用户消息，执行安全由 open-turn 单独判断。
     const events = await host.listEvents(sessionId);
+    if (transitionInFlight(events)) return done('skipped', 'transition-in-flight');
+    if (hasOpenTurn(events)) return done('skipped', 'turn-in-flight');
     const turnCount = countTurns(events);
     const threshold = config.threshold ?? DEFAULT_THRESHOLD;
     mark('T0', {turnCount, threshold});
@@ -73,7 +76,11 @@ export async function performRollover({
     // 命名预演放在建会话之前：cluster-cap / user-renamed 也必须是零副作用
     const currentTitle = await host.getTitle(sessionId);
     const titles = (await host.listTitles()).map((t) => t.title);
-    let plan = planVolumeTitles(currentTitle, titles, {userRenamed});
+    const previous = index?.get(sessionId);
+    const renamed = userRenamed || await host.isUserRenamed?.(sessionId) || false;
+    const oldVolume = previous?.vol_no ?? (!renamed && parseVolume(currentTitle).k === 9 ? 9 : 1);
+    let plan = planVolumeTitles(currentTitle, titles, {preserveTitle: renamed, nameSuffix: !renamed ? previous?.name_suffix : undefined,
+        volumeNo: oldVolume});
     // 达到卷号上限后，显式手动分卷允许新建独立接续系列，保留来源卷的标题与索引。
     if (manual && !plan.ok && plan.reason === 'cluster-cap') {
         const base = parseVolume(currentTitle).base;
@@ -83,10 +90,16 @@ export async function performRollover({
             oldK: parseVolume(currentTitle).k, newK: 1, newTarget: `${base}（接续 ${n}）`};
     }
     mark('T2:plan', {currentTitle, ...plan});
-    if (!plan.ok) return done('skipped', plan.reason, {currentTitle});
+    if (!plan.ok) return done('skipped', plan.reason, {currentTitle, notice: true});
 
     const jobs = await host.listRunningJobs(sessionId);
     const todos = await host.getTodos(sessionId);
+    // 单次事务只捕获一次待办/jobs；四段正文、机器快照和页面八块都消费它。
+    activeIndexes = todos.flatMap((t, i) => t.status === 'in_progress' ? [i + 1] : []);
+    currentStepIndex = activeIndexes[0] ?? null;
+    constraints ??= constraintsFrom(events);
+    changedFiles ??= changedFilesFrom(events);
+    summarySegments ??= buildSummarySegments({events, todos, jobs, currentStepIndex});
     mark('T2:snapshot', {jobs: jobs.length, todos: todos.length});
 
     // T3 八段摘要（失败=不分卷，旧卷零动作；retry 计数由调用方按 index.summary_retry 维护）
@@ -94,14 +107,22 @@ export async function performRollover({
     const clusterId = (!plan.independent && index?.get(sessionId)?.cluster_id) || `cluster:${plan.base}`;
     const built = buildHandoff({
         summarySegments, todos, activeIndexes, currentStepIndex, openJobs: jobs,
-        constraints, changedFiles, cluster: {cluster_id: clusterId}, fromSessionId: sessionId,
+        constraints, changedFiles, cluster: {cluster_id: clusterId, parent_session_id: plan.independent ? null : sessionId,
+            vol_no: plan.independent ? 1 : oldVolume + 1, independent: !!plan.independent}, fromSessionId: sessionId,
         toSessionTitle: plan.newTarget,
     });
     mark('T3', {ok: built.ok, bytes: built.bytes, reason: built.reason});
     if (!built.ok) return done('failed', built.reason, {bytes: built.bytes});
-    const text = renderHandoffMessage(built.payload, {volume: plan.newK, at: now()});
+    built.payload.from_title = plan.oldTarget ?? currentTitle;
+    built.payload.created_at = now();
+    built.payload.health = {summary_retry: state?.retryGet?.(sessionId)?.attempts ?? 0, snapshot_consistent: true};
+    const text = renderHandoffMessage(built.payload, {volume: built.payload.cluster.vol_no, at: now()});
     const messageBytes = new TextEncoder().encode(text).length;
     if (messageBytes > MAX_BYTES) return done('failed', 'oversize', {bytes: messageBytes});
+    try { state?.preflight?.(); } catch (e) {
+        return done('failed', 'storage-unavailable', {error: String(e.message)});
+    }
+    const pending = (rec) => { try { state?.pendingAdd(rec); } catch (e) { mark('cleanup-degraded', {error: String(e.message), sessionId: rec.sessionId}); } };
 
     // T4 新建会话（暂不定名：宿主 create 本身没有标题参数）
     let newSessionId;
@@ -120,7 +141,7 @@ export async function performRollover({
         await host.injectFirstMessage(newSessionId, text);
     } catch (e) {
         mark('T5', {error: String(e?.message ?? e)});
-        state?.pendingAdd({
+        pending({
             sessionId: newSessionId,
             kind: 'abandoned-untitled',
             reason: 'inject-failed',
@@ -139,7 +160,7 @@ export async function performRollover({
             renamedOld.push({sessionId, from: currentTitle, to: plan.oldTarget});
         } catch (e) {
             mark('T6', {error: String(e?.message ?? e)});
-            state?.pendingAdd({
+            pending({
                 sessionId: newSessionId,
                 kind: 'abandoned-untitled',
                 reason: 'rename-old-failed',
@@ -170,7 +191,7 @@ export async function performRollover({
                 mark('T7:rollback-failed', {sessionId: r.sessionId, error: String(e2?.message ?? e2)});
             }
         }
-        state?.pendingAdd({
+        pending({
             sessionId: newSessionId,
             kind: 'abandoned-untitled',
             reason: 'rename-new-failed',
@@ -184,24 +205,25 @@ export async function performRollover({
     // T8 提交：簇索引（七字段）+ turn_counts 同文件同原子提交，旧卷置只读标记
     const oldRec = plan.independent ? index.get(sessionId) : index.record({
         sessionId, clusterId, parentSessionId: index.get(sessionId)?.parent_session_id ?? null,
-        volNo: plan.oldTarget ? parseVolume(plan.oldTarget).k : plan.oldK,
-        nameSuffix: plan.oldTarget ? `-${parseVolume(plan.oldTarget).k}` : `-${plan.oldK}`,
+        volNo: oldVolume,
+        nameSuffix: plan.oldTarget ? `-${plan.oldTarget.match(/-(\d+)$/)?.[1]}` : plan.oldK ? `-${plan.oldK}` : '',
         rolloverState: 'sealed', readonlyByRollover: true,
     });
     const newRec = index.record({
-        sessionId: newSessionId, clusterId, parentSessionId: sessionId,
-        volNo: plan.newK, nameSuffix: `-${plan.newK}`, rolloverState: 'active', readonlyByRollover: false,
+        sessionId: newSessionId, clusterId, parentSessionId: plan.independent ? null : sessionId,
+        volNo: plan.independent ? 1 : oldVolume + 1, nameSuffix: `-${plan.newK}`, rolloverState: 'active', readonlyByRollover: false,
     });
     index.setTurnCounts?.({...index.turnCounts?.(), [sessionId]: turnCount, [newSessionId]: 0});
     const persisted = persistence?.persist?.() ?? null; // null = 显式降级（L3），不静默丢：调用方看 persistence.degraded
-    const ro = (!plan.independent && state?.markReadonly(sessionId, {
+    let ro = null, readonlyDegraded = false;
+    try { ro = (!plan.independent && state?.markReadonly(sessionId, {
         clusterId,
         volNo: oldRec.vol_no,
         rolledAt: now(),
         rolledInto: newSessionId
-    })) || null;
-    state?.pendingRemove(newSessionId);
-    mark('T8', {clusterId, persisted, readonly: !!ro, degraded: persistence?.degraded ?? false});
+    })) || null; } catch (e) { readonlyDegraded = true; mark('readonly-degraded', {error: String(e.message)}); }
+    try { state?.pendingRemove(newSessionId); } catch (e) { mark('cleanup-degraded', {error: String(e.message)}); }
+    mark('T8', {clusterId, persisted, readonly: !!ro, degraded: !!persistence?.degraded || readonlyDegraded});
 
     return {
         status: 'rolled-over', reason: manual ? 'manual' : 'threshold-reached', sessionId, newSessionId, trace, turnCount,

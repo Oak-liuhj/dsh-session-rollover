@@ -33,30 +33,38 @@ export function nextVolumeTitle(currentTitle, existingTitles = [], opts = {}) {
  */
 export function planVolumeTitles(currentTitle, existingTitles = [], opts = {}) {
     if (opts.userRenamed) return {ok: false, reason: 'user-renamed'}; // B8：用户手动改名不覆盖
-    const {base, k: oldK} = parseVolume(currentTitle);
+    // 重名可使显示后缀超过 9；仅使用索引记录确认该后缀，避免把 Q3-26 等普通标题误拆。
+    const known = /^-\d+$/.test(opts.nameSuffix ?? '') && currentTitle.endsWith(opts.nameSuffix);
+    const {base, k: oldK} = known
+        ? {base: currentTitle.slice(0, -opts.nameSuffix.length), k: Number(opts.nameSuffix.slice(1))}
+        : parseVolume(currentTitle);
     const taken = new Set(existingTitles);
+    const nameLimit = opts.volumeNo != null ? 100000 : VOLUME_CAP;
+    if (opts.volumeNo >= VOLUME_CAP) return {ok: false, reason: 'cluster-cap'};
     taken.delete(currentTitle); // 自己的现名不算被占用
     let oldTarget = null;
     let bumped = false;
     let cursor;
-    if (oldK === 0) {
+    if (opts.preserveTitle) {
+        cursor = 1;
+    } else if (oldK === 0) {
         let c = 1;
-        while (c <= VOLUME_CAP && taken.has(`${base}-${c}`)) {
+        while (c <= nameLimit && taken.has(`${base}-${c}`)) {
             c++;
             bumped = true;
         } // B7：重名递增到第一空位并记日志
-        if (c > VOLUME_CAP) return {ok: false, reason: 'cluster-cap'}; // B11
+        if (c > nameLimit) return {ok: false, reason: 'cluster-cap'}; // B11
         oldTarget = `${base}-${c}`;
         taken.add(oldTarget);
         cursor = c + 1;
     } else {
         cursor = oldK + 1;
     }
-    while (cursor <= VOLUME_CAP && taken.has(`${base}-${cursor}`)) {
+    while (cursor <= nameLimit && taken.has(`${base}-${cursor}`)) {
         cursor++;
         bumped = true;
     }
-    if (cursor > VOLUME_CAP) return {ok: false, reason: 'cluster-cap'};
+    if (cursor > nameLimit) return {ok: false, reason: 'cluster-cap'};
     return {ok: true, base, oldK, oldTarget, newK: cursor, newTarget: `${base}-${cursor}`, bumped};
 }
 

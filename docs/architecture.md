@@ -1,70 +1,71 @@
 # 架构与维护说明
 
-本项目使用 JavaScript ESM，不需要编译。目录按职责分类；保留唯一的宿主插件类，其余业务与存储模块使用函数或工厂，便于注入内存夹具验证。
+项目使用 JavaScript ESM，服务端无需编译；浏览器 UI 通过无依赖脚本生成单文件 ModuleLoader 入口。
 
-## 模块归属
+## 模块边界
 
-| 层 | 负责 | 依赖约定 |
+| 层 | 职责 | 依赖 |
 | --- | --- | --- |
-| `domain/` | 计数、命名、模式、事件解析、摘要、交接载荷、内存簇索引 | 不访问磁盘、网络、DOM 或宿主服务 |
-| `application/` | 分卷顺序、命名失败补偿、消息排版 | 调用 domain；宿主与存储通过参数传入 |
-| `storage/` | 数据目录解析、文件读写、只读标记、提示队列 | 可依赖 domain，不依赖插件类 |
-| `server/` | 宿主生命周期、事件挂载、服务注册、适配器、HTTP 路由 | 组装上述各层；使用公开宿主服务 |
-| 根目录 `client.js` | 浏览器轮询、toast 渲染与销毁 | 由宿主 `window.__ModuleLoader__` 直接执行 |
+| `domain/` | 用户轮次/切点、模式、命名、摘要、载荷和内存簇索引 | 不访问宿主、磁盘、网络或 DOM |
+| `application/` | T0–T8 顺序、预算、失败补偿与消息排版 | domain；以参数传入 host、state、index、persistence |
+| `storage/` | 索引、只读、快照、重试和提示持久化 | 可依赖 domain，不依赖插件类 |
+| `server/` | 生命周期、事件、安全闸、公开服务适配和 HTTP | 组装各层 |
+| `client/` | 共享状态订阅、交接卡、归档输入保护和 toast | 宿主 React、slots、uiWorkspace、uiConversation、conversation |
 
-`SessionRolloverPlugin` 只在 `src/server/plugin.mjs` 定义。根目录 `index.js` 保持默认与具名导出，避免改动宿主包入口。旧 `src/*.mjs` 文件仅转导出新模块，兼容已经使用 `./src/*` 子路径的调用方；新功能直接修改分类目录，不在兼容文件中添加实现。
+唯一插件类位于 `src/server/plugin.mjs`。根 `index.js` 保留默认/具名导出，旧 `src/*.mjs` 仅转导出，兼容包 `./src/*` 使用者。
 
-浏览器入口目前没有构建器，不能仅把函数移入 ESM 文件就期望宿主自动加载。若后续拆分 `client.js`，需同时建立打包或模块加载方案，并复验产物。
+`npm run build` 将 `src/client/rollover-ui.js` 的 factory 嵌入 `toast-client.js` 模板，生成根 `client.js`；`build:check` 防止源码与产物不一致。测试与打包前自动构建，无额外 npm 运行时依赖。
 
-## 两个分卷入口
+## 入口与切点
 
-自动路径为 `agent/pre-step → onPreStep → maybeRollover → performRollover`。只在回合首步检查；只读卷直接返回 `{kind: 'reject'}`，正常回合放行后再异步发起判定。`lastCheckedTurn` 防止同轮重复检查，`busy` 使用 `rollover:<sessionId>` 防止自动和手动事务并发。
+自动入口为 `session/event` 的 `turn/end`、`compaction/end`、`part/end`、`tool/result`，同时保留 `agent/pre-step` 兼容检查。`countTurns` 统计真正的用户消息，`hasOpenTurn` 检查执行是否结束，两者互不代替。宿主内部时间、技能目录、运行时上下文及交接注入不占用户轮数。
 
-手动路径为 `ctx.sessionRollover.rollover → rolloverNow → performRollover({manual: true})`。它读取继承待办和后台任务构建摘要，绕过自动轮数与模式限制；保留会话可用性、封卷、只读、子会话与工具安全限制。`ctx.sessionRollover.info` 只查询来源链接、快照和只读状态。
+同一会话的自动/手动入口共用 `rollover:<id>` 锁；`lastCheckedTurn` 防同轮重复检查。不安全工具/换段切点释放本轮检查标记，等结束事件再次判定。`forceAuto` 不绕过切点检查。
 
-`hostFor(session)` 委托 `createHostAdapter`，绑定该来源会话。宿主 `sessions`、`sessionTitle`、`sessionController`、`sessionProjections`、`workspaceRegistry` 的访问集中在接入层，不传入 domain。
+服务端在后续回合首步拦截归档只读。手动 `ctx.sessionRollover.rollover` 绕过 mode/threshold，但仍检查执行状态、封卷、只读、子会话、工具与预算。`setReadonly` 只允许已归档卷，写入单卷设置后再同步索引；单卷设置为查询优先来源，保持重启一致。
 
-## 分卷阶段与失败边界
+必需服务由 static inject 声明，包括 HTTP owner 准入使用的 `connection`。可选 `jobs` / `agentDefaultModel` 分别使用 `ctx.inject`，服务撤销时清理引用，禁止跨 Cordis 注入范围直接取值。
 
-| 阶段 | 工作 | 未通过时的处理 |
+## 事务阶段
+
+| 阶段 | 工作 | 失败边界 |
 | --- | --- | --- |
-| T0 | 从完整日志统计轮次 | 自动调用未达阈值则跳过 |
-| T1 | 计算模式及外部分段降级 | 自动调用处于 off/manual 则跳过，manual 带提示标志 |
-| T2 | 子会话、未收尾工具检查；命名预演与快照 | 跳过，不创建会话或改名 |
-| T3 | 构造交接载荷、排版并校验完整消息字节数 | 失败，不创建会话或改名 |
-| T4 | 创建未定名新会话 | 返回 `create-failed`，旧卷不变 |
-| T5 | 保存快照并注入首条交接消息 | 旧卷不变，遗留新卷登记到待清理清单 |
-| T6 | 必要时将原标题改为首个空闲卷号 | 失败则登记遗留新卷 |
-| T7 | 新卷改名 | 失败则尝试恢复旧卷标题；回滚失败单独标记 |
-| T8 | 更新簇索引、计数及旧卷只读状态 | 各文件分别写入；索引落盘失败返回降级标志 |
+| T0 | 读取快照、检查执行中回合/换段、统计用户轮数 | 不建卷 |
+| T1 | mode 和有来源信息的外部 marker 检测 | 不建卷；manual 可提示 |
+| T2 | 子会话/工具安全闸、命名预演、一次捕获 todos/jobs | 不建卷 |
+| T3 | 四段正文与完整载荷、1500 字符/16 KiB 闸、存储预检 | 不建卷、不裁剪关键内容 |
+| T4 | 按来源 workspace/cwd 创建空会话 | 原会话不变 |
+| T5 | 保存快照、继承模型、注入首条消息 | 原会话不变；废弃卷登记 pending |
+| T6 | 必要时原会话改名 | 失败登记 pending |
+| T7 | 新卷改名 | 失败尝试恢复原标题，回滚失败独立告警 |
+| T8 | 索引/计数提交、旧卷只读、清理 pending | 分文件原子替换；异常显式 degraded |
 
-这是一段带失败补偿的流程，不是跨宿主和多个文件的原子事务。待清理项只登记，插件不自动删除宿主会话。已有卷号的来源会话不重复改名；连续交接保留其原 `parent_session_id`。
+这不是跨宿主与多个 JSON 的原子数据库事务。建卷前的存储预检发现常见目录不可写问题；提交后辅助状态/提示失败不能将已成功建卷重新报告成失败并再次创建。清理登记本身失败也记录降级，避免二次异常覆盖主结果。
 
-达到系列上限后，手动分卷可以创建独立接续系列。此路径保留来源索引、标题和只读状态，新卷使用新簇标识，父会话仍指向来源卷。
+真实 `vol_no` 独立于命名后缀；冲突使后缀超过 9 时使用索引确认后缀，避免名称嵌套，也避免把普通 `Q3-26` 猜成卷号。第九卷显式接续可创建新簇，父链为 null，JSON 来源 ID 只提供历史出处；此路径不封存或改名来源。
 
-## 数据与事件约定
+## 一致性与恢复
 
-- `eventType` 兼容事件 `type` / `kind`；`textOf` 统一解析 `data.content[].text` 等正文形状，其他模块复用。
-- `countTurns` 优先返回 `turn/end` 总数，为零才回退 `turn/start`，再为零才使用 `user/message`。测试和文档必须区分此统计口径与消息条数。
-- 待办取事件日志最后一次合法 `todo/write`，避免 `turn/start` 清空实时投影导致丢失。无待办事件时，宿主适配器才使用交接快照；明确写入的空清单应被保留。
-- 工具切点按 `callId` 匹配 `tool/call` 与 `tool/result`；后台 workflow 记录和未收尾工具调用使用不同规则。
-- 交接载荷和完整首条消息都受 16 KiB UTF-8 字节预算限制；不能用 JavaScript 字符串长度代替字节数。
-- `cluster-index.json` 的七字段记录和 `turn_counts` 同文件提交；状态文件沿用旧名称，无数据迁移步骤。详见 README 的数据目录表。
+一次适配器捕获源事件与 live job 列表；一次事务取 todos/jobs 后，同时用于人读和机器快照。保留全部 active 步骤、约束和文件；正文四段映射为 UI 六块内容及卷标识/健康两组。用户原文和路径不能用静默截断满足预算。
 
-内存索引的 `rebuildFromTitles` 和摘要的 `createSummaryRetry` 是可单测的辅助能力，当前主插件未自动接入两者。新需求若要启用它们，应补充宿主接线测试，不仅测试辅助函数。
+待办取最后一个合法 `todo/write`。完全没有实时事件时继承快照，明确空数组表示清空。后台任务合并 workflow、`job/registered` / `job/settled` 和可选 live registry，按 owner 过滤，记录 running/stopping 等状态而不迁移进程。
 
-## 提示投递
+摘要失败尝试次数写 `retry-<id>.json`，初次加两次重试后停止，重启不重置；后续用户轮次提供重试机会，手动操作可开始新尝试。
 
-服务端把提示写入 `notices.json`，按 `(sessionId, reason)` 去重。正常自动分卷成功后清理该会话的去重键和残余队列。HTTP 路由只接受 GET，缺少会话参数返回 400，其他方法返回 405。
+启动读取合法索引，然后扫描宿主中已注入的 `rollover: v1` 交接消息，补齐缺项或重建丢失/坏索引；使用快照 true volume，旧快照可沿父链推导。pending 废弃卷不参与恢复，不凭任意标题后缀归簇。显式 readonly false 不被重建覆盖。旧 `rebuildFromTitles` / `createSummaryRetry` 导出继续兼容，但运行时使用上述更严格恢复与持久化尝试流程。
 
-浏览器端同源轮询提示接口，页面隐藏时暂停取件；切换会话后等待 300 毫秒。取件时服务端删除队列项，浏览器再按提示 ID 去重并渲染；这不是带展示确认的可靠消息协议。普通提示展示 5 秒，回滚异常展示 8 秒，卸载时清理计时器、监听和提示节点。
+## 浏览器与控制面
 
-## 修改与验证
+每会话共用轮询缓存，多 UI 订阅复用请求；最后订阅卸载后清理轮询。切换会话当帧不借用旧卷状态。
 
-1. 纯规则改动放入 `domain/`，测试放在 `test/domain/`。
-2. 分卷次序、补偿或预算改动放入 `application/`，用宿主接口夹具测试副作用边界。
-3. 文件格式改动放入 `storage/`，验证重启重载、旧格式兼容及不可写场景。
-4. 宿主服务、事件、工作区或模型继承改动放入 `server/`，用接线测试检查调用顺序与参数。
-5. 对外入口及路径改动同步维护 `test/package/`，并检查实际打包产物的模块解析。
+正式接口 `GET/POST /api-dsh-session-rollover/session` 通过宿主 `connection.admit` 检查 owner；POST 校验 Origin、JSON、体积与 ID。摘要由服务器生成，不接受浏览器传入快照。旧 pending GET 继续用于一次性 toast，取走即删，不确认展示。
 
-运行 `npm test` 执行全部测试，`npm pack --dry-run` 查看发布清单。新增子目录测试由 Node 自动发现，无需逐个维护脚本清单。自动化夹具不替代真实宿主验收；涉及宿主接口或浏览器加载变更时，还需在目标 DSH / ds-bot 环境验证。
+归档输入使用公开 `conversation.blocks`，释放时撤销自己的原因并恢复其他插件最新状态。不要覆盖 `conversation.composer.bar`：其子槽拥有独占声明和 renderSlot 授权，简单包装会崩溃，重复声明也会被拒绝。
+
+首条 userText 渲染卡固定显示历史快照；后续 R2 进度消费实时待办。缺少 userText 扩展时在 dock 回退展示。列表优先 trailing，旧宿主回退 leading；宿主状态图标可能临时占据 leading。来源导航与自动跳转区分：只有当前浏览器观察到活动→封卷时跳新卷，回看旧卷不跳回。
+
+## 验证约定
+
+规则改动在 domain 测试；副作用/补偿用 application 夹具；重启/存储/权限/注入用 server 与 storage 测试；UI 资源释放和提示用 client 测试；兼容导出用 package 测试。运行 `npm test`、`npm run build:check`，并实际解包导入 npm pack 产物。
+
+宿主接口与前端加载变更需要真实宿主浏览器验证。已安装宿主加本地模型夹具、交互原型和纯测试分别记录证据；不能将其等同于生产服务商模型或 Bot 群端验收。详见 [R3 修复与验证记录](./r3-validation.md)。

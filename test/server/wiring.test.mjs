@@ -113,12 +113,12 @@ test('接线：10 轮 + 无 in-flight → 建未定名会话、注入、旧卷 -
   plugin.notices.queue('s1', 'failed', '旧告警');
   await plugin.maybeRollover({ agent: { session: sessions.get('s1') } });
   assert.equal(plugin.notices.snapshot().dedupe['s1|failed'], undefined, '成功分卷后去重键已清');
-  assert.equal(plugin.notices.takePending('s1').length, 0, '成功分卷后残留待投递也清');
+  assert.deepEqual(plugin.notices.takePending('s1').map(n => n.reason), ['completed'], '清旧告警后只保留成功提示');
 
   assert.deepEqual(calls.rename.map((r) => `${r.id}→${r.title}`), ['s1→网关重构-1', 's-new-1→网关重构-2']);
   assert.equal(calls.prompt.length, 1, '注入一次');
   assert.equal(calls.prompt[0].sessionId, 's-new-1');
-  assert.match(calls.prompt[0].content[0].text, /## 1\. 任务目标/);
+  assert.match(calls.prompt[0].content[0].text, /## 1\. 上轮工作摘要/);
   assert.match(calls.prompt[0].content[0].text, /第 2 步进行中：网关路由/);
   assert.match(calls.prompt[0].content[0].text, /src\/gateway\.mjs/);
   assert.doesNotMatch(calls.prompt[0].content[0].text, /\[(Checkpoint \d+|Handoff(?: · part)? \d+)\]/);
@@ -183,7 +183,7 @@ test('接线 B6：client 取件口只投一次，且按会话隔离', async () =
   const plugin = new Plugin(ctx, { dataDir: dir, threshold: 10, mode: 'manual' });
   await plugin.maybeRollover({ agent: { session: sessions.get('s1') } });
 
-  assert.equal(routes.length, 1);
+  assert.equal(routes.length, 2, '提示与 owner 会话控制分别注册');
   assert.equal(routes[0].path, '/api-dsh-session-rollover/pending');
   const get = (url) => {
     const res = { code: 0, headers: {}, body: '', writeHead(c, h) { this.code = c; this.headers = h; }, end(b) { this.body = b; } };

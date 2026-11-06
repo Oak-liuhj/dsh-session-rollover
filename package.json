@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-session-rollover",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "type": "module",
   "description": "会话分卷接续：轮次计数/八段交接/-N 命名/簇索引/只读回溯（契约 v0.2，旁挂不改宿主）",
   "main": "index.js",
@@ -13,12 +13,17 @@
     "index.js",
     "client.js",
     "src/",
+    "scripts/",
     "cordis.patch.yml",
     "README.md",
     "docs/"
   ],
   "scripts": {
-    "test": "node --test"
+    "build": "node scripts/build-client.mjs",
+    "build:check": "node scripts/build-client.mjs --check",
+    "pretest": "npm run build",
+    "prepack": "npm run build",
+    "test": "node --test \"test/**/*.test.mjs\""
   },
   "dsh": {
     "manifestVersion": 1,
@@ -27,7 +32,8 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "platform": "web"
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-conversation", "@deepseek-ai/dsh-client-ui-workspace"]
     }
   },
   "dsBot": {

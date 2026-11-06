@@ -13,12 +13,15 @@ import {lastTodos} from '../domain/todos.mjs';
  * @param {(event: string, data?: object) => void} deps.log 诊断日志回调
  * @returns {object} performRollover 所需的异步宿主接口
  */
-export function createHostAdapter({ctx, session, state, sessionOf, log}) {
+export function createHostAdapter({ctx, session, state, sessionOf, log, services = ctx}) {
     const id = session.id;
+    const sourceEvents = session.snapshotEvents().slice();
+    const registry = services.jobs;
+    const registryJobs = registry?.list ? registry.list(id) : [];
     const eventsOf = (sid) => {
         const s = sid === id ? session : sessionOf(sid);
         try {
-            return s?.snapshotEvents?.() ?? [];
+            return sid === id ? sourceEvents : s?.snapshotEvents?.() ?? [];
         } catch {
             return [];
         }
@@ -32,6 +35,13 @@ export function createHostAdapter({ctx, session, state, sessionOf, log}) {
             } catch {
                 return '';
             }
+        },
+        isUserRenamed: async (sid) => {
+            const target = sid === id ? session : sessionOf(sid);
+            const title = ctx.sessionTitle.get(target);
+            const inherited = state.handoffGet(sid);
+            return (title?.source?.kind === 'user' || title?.source === 'user') &&
+                title.title !== inherited?.to_session_title;
         },
         listTitles: async () => {
             const out = [];
@@ -71,6 +81,21 @@ export function createHostAdapter({ctx, session, state, sessionOf, log}) {
                     recoverable: true
                 });
                 else if (eventType(e) === 'tool-workflow/run-end') open.delete(e.data?.runId ?? e.data?.id ?? e.seq);
+                else if (eventType(e) === 'job/registered' && e.data?.jobId) open.set(String(e.data.jobId), {
+                    id: String(e.data.jobId), command: e.data.label ?? e.data.kind ?? '', status: 'running', recoverable: true,
+                });
+                else if (eventType(e) === 'job/settled') open.delete(String(e.data?.jobId));
+            }
+            // live registry 能识别重启后已结算但日志尚未补齐的任务。
+            if (registry?.list) {
+                for (const job of await registryJobs) {
+                    if (job.owner && job.owner !== sid) continue;
+                    if (['running', 'stopping', 'pending', 'starting'].includes(job.status)) open.set(String(job.id), {
+                        id: String(job.id), command: job.label ?? job.command ?? job.kind ?? '',
+                        status: job.status, recoverable: job.recoverable !== false,
+                    });
+                    else open.delete(String(job.id));
+                }
             }
             return [...open.values()]; // 同刻全量；切点后新起的 run 不在快照里
         },
@@ -94,6 +119,12 @@ export function createHostAdapter({ctx, session, state, sessionOf, log}) {
                 }
             } catch (e) {
                 log('model-inherit-failed', {sessionId, error: String(e?.message ?? e)});
+                const defaults = services.agentDefaultModel;
+                const fallback = await defaults?.currentSelection?.();
+                if (!fallback?.provider || !fallback?.model) throw e;
+                await ctx.sessionController.selectModel({sessionId, ...fallback});
+                state.modelFallback?.(sessionId);
+                log('model-fallback', {sessionId});
             }
             // 宿主 prompt(request, signal)：signal.throwIfAborted() 是第一行，必须给 AbortSignal
             await ctx.sessionController.prompt({

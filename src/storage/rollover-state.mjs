@@ -30,6 +30,19 @@ export function createRolloverState(dir) {
         dir,
         pendingPath,
         readonlyPath,
+        readonlyRecord(sessionId) { return readJson(readonlyFileOf(dir, sessionId), null); },
+        preflight() {
+            // 在创建宿主会话之前发现不可写目录，避免留下空会话。
+            writeJsonAtomic(join(dir, 'storage-health.json'), {checkedAt: new Date().toISOString()});
+        },
+        setReadonly(sessionId, readonly, payload = {}) {
+            const previous = readJson(readonlyFileOf(dir, sessionId), {});
+            const rec = {...previous, ...payload, readonly: !!readonly};
+            writeJsonAtomic(readonlyFileOf(dir, sessionId), rec);
+            return rec;
+        },
+        retryGet(sessionId) { return readJson(join(dir, `retry-${sessionId}.json`), {attempts: 0}); },
+        retrySave(sessionId, attempts) { writeJsonAtomic(join(dir, `retry-${sessionId}.json`), {attempts}); },
         pendingList: () => Object.values(readJson(pendingPath, {})),
         pendingAdd(rec) {
             const all = readJson(pendingPath, {});

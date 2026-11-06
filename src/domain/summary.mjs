@@ -1,6 +1,6 @@
 // dsh-session-rollover · 八段摘要（无模型依赖的确定性版本；后续可换成模型生成的同结构输入，接口不变）
 // 裁定依据：AC-R3-2 要求八段全非空；把「有据可查」的段从日志/投影直接摘出来，比让模型自由发挥更可复核。
-import {eventType} from './turns.mjs';
+import {eventType, isUserMessage} from './turns.mjs';
 
 const FILE_HINT = /(?:^|[\s"'`(（])([A-Za-z]:[\\/][^\s"'`]+|(?:\.{0,2}[\\/])?(?:[\w.@-]+[\\/])+[\w.@-]+\.[A-Za-z0-9]{1,8})/g;
 const CONSTRAINT_HINT = /(不许|不要|禁止|必须|不得|硬约束|一票否决|不能|只能)/;
@@ -16,7 +16,7 @@ export function textOf(e) {
 }
 
 function textsOf(events, kind) {
-    return events.filter((e) => eventType(e) === kind).map(textOf).filter((t) => t.trim());
+    return events.filter((e) => kind === 'user/message' ? isUserMessage(e) : eventType(e) === kind).map(textOf).filter((t) => t.trim());
 }
 
 /** 从 tool/call 的 arguments 里捞文件路径（⑥ 改动文件；只报「碰过」不判改没改） */
@@ -31,17 +31,17 @@ export function changedFilesFrom(events) {
             seen.set(path, {path, note: e.data?.name ?? 'tool', deleted: false});
         }
     }
-    return [...seen.values()].slice(0, 20);
+    return [...seen.values()];
 }
 
 export function constraintsFrom(events) {
     const out = [];
     for (const t of textsOf(events, 'user/message')) {
         for (const line of t.split(/\r?\n/)) {
-            if (CONSTRAINT_HINT.test(line) && line.trim().length <= 200) out.push(line.trim());
+            if (CONSTRAINT_HINT.test(line)) out.push(line.trim());
         }
     }
-    return [...new Set(out)].slice(0, 8);
+    return [...new Set(out)];
 }
 
 /**
@@ -60,13 +60,9 @@ export function buildSummarySegments({events = [], todos = [], jobs = [], curren
     const constraints = constraintsFrom(events);
     const list = (a, empty) => (a.length ? a.map((x, i) => `${i + 1}. ${x}`).join('\n') : empty);
     return [
-        ['任务目标', goal],
-        ['已完成', list(done, '尚无已完成项')],
-        ['进行中', list(doing, cur ? `${cur.content}（第 ${currentStepIndex} 步）` : '无进行中项')],
-        ['下一步', list(pending, '无待办项')],
-        ['约束', list(constraints, '未识别到显式约束')], // ⑤：原文摘录，不总结
-        ['已知问题', list(failed, '无已知中断项')],
-        ['在跑任务', list(jobs.map((j) => `${j.id} ${j.command ?? ''} status=${j.status}${j.recoverable === false ? '（需重跑）' : ''}`), '无后台任务')],
-        ['改动文件', list(files.map((f) => f.path), '未从工具调用中识别到文件路径')],
+        ['上轮工作摘要', `${goal}\n已完成：\n${list(done, '尚无已完成项')}`],
+        ['当前进度与关键约束', `${currentStepIndex ? `第 ${currentStepIndex} 步进行中` : '尚未开始'}\n${list(doing, '无进行中项')}\n关键约束（原文）：\n${list(constraints, '本轮未提供')}\n中断项：\n${list(failed, '无')}`],
+        ['文件、代码与未竟事项', `文件：\n${list(files.map(f => f.path), '本轮未提供')}\n未竟后台任务：\n${list(jobs.map(j => `${j.id} ${j.command ?? ''} status=${j.status}${j.recoverable === false ? '（需重跑）' : ''}`), '无后台任务')}`],
+        ['下一步与待办快照', list(pending, '本轮未提供')],
     ];
 }

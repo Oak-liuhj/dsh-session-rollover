@@ -105,7 +105,8 @@ test('manual handoff at -9 creates an independent continuation; automatic remain
   assert.match(manual.to.title, /接续 1/);
   assert.equal(host.titles.get('s-old'), '网关重构-9');
   assert.equal(env.state.isReadonly('s-old'), false);
-  assert.equal(env.index.get(manual.newSessionId).parent_session_id, 's-old');
+  assert.equal(env.index.get(manual.newSessionId).parent_session_id, null);
+  assert.equal(env.state.handoffGet(manual.newSessionId).from_session_id, 's-old', '独立会话仍保留交接来源证据');
 });
 
 test('manual handoff still rejects in-flight tools before creating a session', async () => {
@@ -118,7 +119,7 @@ test('manual handoff still rejects in-flight tools before creating a session', a
 test('the complete injected message, including the JSON snapshot, obeys the byte budget before creation', async () => {
   const host = createFixtureHost({turns: 1});
   const result = await performRollover({...setup(), host, sessionId: 's-old', manual: true,
-    summarySegments: [['目标', 'a'.repeat(9000)]]});
+    summarySegments: [['目标', '继续工作']], constraints: ['a'.repeat(10000)]});
   assert.equal(result.reason, 'oversize');
   assert.equal(host.titles.size, 1);
 });
@@ -154,7 +155,7 @@ test('S10：预建同名 -1 时旧卷递增到第一空位、新卷接下一个�
   assert.equal(idxOnDisk.sessions['s-old'].name_suffix, '-2');
   assert.equal(idxOnDisk.sessions['s-old'].readonly_by_rollover, true);
   assert.equal(idxOnDisk.sessions['s-new-1'].parent_session_id, 's-old');
-  assert.equal(idxOnDisk.sessions['s-new-1'].vol_no, 3);
+  assert.equal(idxOnDisk.sessions['s-new-1'].vol_no, 2, '真实卷序不受撞名后缀影响');
   assert.equal(idxOnDisk.turn_counts['s-old'], 10);
   assert.equal(idxOnDisk.turn_counts['s-new-1'], 0);
   const ro = JSON.parse(readFileSync(readonlyFileOf(dir, 's-old'), 'utf8'));

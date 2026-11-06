@@ -53,6 +53,9 @@ export function buildHandoff(input) {
     const json = JSON.stringify(payload);
     const bytes = encoder.encode(json).length;
     if (bytes > MAX_BYTES) return {ok: false, reason: 'oversize', bytes};
+    // 四段正文不含路径、代码与机器快照；关键内容超限时拒绝分卷，不能静默截断。
+    const prose = summarySegments.map(([, text]) => String(text).replace(/```[\s\S]*?```/g, '').replace(/(?:[\w.@-]+[\\/])+[\w.@-]+/g, '')).join('');
+    if ([...prose].length > 1500) return {ok: false, reason: 'summary-too-long', bytes};
     return {ok: true, payload, bytes};
 }
 
