@@ -42,7 +42,8 @@
     "docs/r3-demo.html",
     "docs/screenshots/prototype-fixed.png",
     "docs/live-host-validation.json",
-    "docs/prototype-validation.json"
+    "docs/prototype-validation.json",
+    "docs/DEVELOPMENT.md"
   ],
   "scripts": {
     "build": "node scripts/build-client.mjs",
