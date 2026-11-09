@@ -1,9 +1,8 @@
 dsh-session-rollover
 Maintained by Oak-liuhj.
 
-This distribution includes upstream work by Fei2411,
-Copyright (c) 2026 Fei2411, licensed under the MIT License.
-The upstream notice and license are preserved in LICENSE.upstream.
+This distribution includes MIT-licensed source code.
+The original copyright notice and license are preserved in LICENSE.upstream.
 Project changes are provided under Apache License 2.0 (LICENSE).
 Both notices and licenses must be retained when redistributing this package.
 

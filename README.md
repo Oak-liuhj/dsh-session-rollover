@@ -163,4 +163,4 @@ npm pack --pack-destination <输出目录>
 
 ## 许可证
 
-本项目采用 [Apache-2.0](./LICENSE)，包含 Fei2411 的 [MIT 上游贡献](./LICENSE.upstream)；分发时须同时保留两份许可证及 [NOTICE](./NOTICE)。SPDX：`(Apache-2.0 AND MIT)`。
+许可证：[Apache-2.0](./LICENSE) 与 [MIT](./LICENSE.upstream)。分发时须保留两份许可证及 [NOTICE](./NOTICE)。SPDX：`(Apache-2.0 AND MIT)`。

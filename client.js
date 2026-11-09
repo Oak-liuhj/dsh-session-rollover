@@ -425,7 +425,7 @@ function createRolloverUI(React) {
                     h('p', null, '在宿主插件配置中调整 mode（auto / manual / off）、threshold 和 dataDir。manual 达阈值只提示，off 关闭自动判定；显式手动操作仍可使用。数据默认存于 DSH_HOME/plugin-data/dsh-session-rollover，卸载不会清除。'),
                     h('h4', null, '能力边界'),
                     h('p', null, '摘要为确定性摘录，不额外调用模型；继续对话使用 DSH 已配置的模型，无需额外 API Key。后台任务仅记录句柄和状态，不迁移或重启进程。摘要或存储异常会提示，复杂内容超预算时可能无法交接。'),
-                    h('p', {className: 'dsr-help-credit'}, 'dsh-session-rollover · Oak-liuhj · 保留 Fei2411 上游贡献；Apache-2.0 AND MIT。')) : null,
+                    h('p', {className: 'dsr-help-credit'}, 'dsh-session-rollover · Oak-liuhj')) : null,
                 h('div', {className: 'dsr-actions-body'},
                     h('button', {type: 'button', 'aria-expanded': showHelp, onClick: () => setShowHelp(!showHelp)}, showHelp ? '收起使用说明' : '使用说明'),
                     h('button', {type: 'button', disabled: busy || info.sealed || !navigate, onClick: () => action('rollover')}, '现在换会话'),

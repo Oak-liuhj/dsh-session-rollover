@@ -41,4 +41,4 @@ Replace the old `@deepseek-ai/dsh-session-rollover` dependency and bundle rather
 
 [Source](https://github.com/Oak-liuhj/dsh-session-rollover) · [Issues](https://github.com/Oak-liuhj/dsh-session-rollover/issues)
 
-Maintained by Oak-liuhj; includes MIT-licensed upstream work by Fei2411. Distributed with Apache-2.0 and MIT notices. This is a community plugin, not an official DeepSeek product.
+Maintained by Oak-liuhj. Distributed with Apache-2.0 and MIT notices. This is a community plugin, not an official DeepSeek product.

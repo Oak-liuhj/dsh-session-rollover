@@ -46,4 +46,4 @@
 
 [源码](https://github.com/Oak-liuhj/dsh-session-rollover) · [反馈问题](https://github.com/Oak-liuhj/dsh-session-rollover/issues)
 
-维护者 Oak-liuhj；保留 Fei2411 上游 MIT 贡献。本项目分发包含 Apache-2.0 与 MIT 两份许可证。社区插件，与 DeepSeek 官方无隶属关系。
+维护者 Oak-liuhj。本项目分发包含 Apache-2.0 与 MIT 两份许可证。社区插件，与 DeepSeek 官方无隶属关系。
