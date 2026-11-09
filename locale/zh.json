@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "会话分卷与续接",
+    "title": "dsh-session-rollover",
     "description": "长会话自动分卷，携带待办交接快照继续工作；支持来源回溯、归档只读和 Web / 桌面客户端。",
     "detail": "docs/DETAIL.zh-CN.md"
   }

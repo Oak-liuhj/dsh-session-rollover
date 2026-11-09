@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Session Rollover",
+    "title": "dsh-session-rollover",
     "description": "Split long conversations into volumes with todo handoff snapshots, source navigation and read-only archives in DSH Web and desktop.",
     "detail": "docs/DETAIL.md"
   }
