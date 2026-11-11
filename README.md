@@ -8,7 +8,7 @@
 
 适合持续编码、问题排查和多步骤任务。支持 Web 与桌面客户端，无需为插件单独配置 API Key。
 
-**版本 1.2.0（待发布）** · **支持 DSH 0.2.1-rc.5 / 0.2.2-rc.1** · **维护者 Oak-liuhj**
+**版本 1.2.0** · **支持 DSH 0.2.1-rc.5 / 0.2.2-rc.1** · **维护者 Oak-liuhj**
 
 [使用指南](./docs/DETAIL.zh-CN.md) · [English guide](./docs/DETAIL.md) · [更新记录](./CHANGELOG.md) · [问题反馈](https://github.com/Oak-liuhj/dsh-session-rollover/issues)
 
