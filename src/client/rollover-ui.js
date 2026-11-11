@@ -246,7 +246,7 @@ export function createRolloverUI(React) {
         inject(ctx, ['slots'], scope => {
             const slots = scope.slots;
             if (typeof slots?.inject !== 'function' || typeof slots?.register !== 'function') throw new Error('slots unavailable');
-            const mount = (name, Component, options = {}) => scope.effect(() => slots.inject(name, () => slots.register({name,
+            const mount = (name, Component, options = {}, owner = scope) => owner.effect(() => owner.slots.inject(name, () => owner.slots.register({name,
                 id: 'dsh-session-rollover', order: 35, ...options}, Component)));
             mount('conversation.session.header.actions', Header);
             mount('conversation.input.dock', Dock);
@@ -283,8 +283,10 @@ export function createRolloverUI(React) {
                         const payload = parseHandoff(text);
                         return payload ? {id: 'dsr-handoff', start: 0, end: text.length, data: payload} : undefined;
                     }}));
+                // 插槽必须随 uiConversation 的注入子作用域释放，不能挂在较长寿命的 slots 父作用域。
+                // 新宿主重连/热替换领域服务时会重建该子作用域；挂在父级会重复占用同一个 keyed slot。
                 mount('conversation.user.text.node', props => h(Card, {payload: props.node.data,
-                    source: props.node.data.from_session_id && !props.node.data.cluster?.independent ? {sessionId: props.node.data.from_session_id, title: props.node.data.from_title ?? '上一卷'} : null}), {key: 'dsr-handoff'});
+                    source: props.node.data.from_session_id && !props.node.data.cluster?.independent ? {sessionId: props.node.data.from_session_id, title: props.node.data.from_title ?? '上一卷'} : null}), {key: 'dsr-handoff'}, textScope);
                 renderInline = true;
                 textScope.effect?.(() => () => { renderInline = false; });
             });

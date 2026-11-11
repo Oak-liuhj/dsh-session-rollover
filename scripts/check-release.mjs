@@ -30,6 +30,13 @@ assert.equal(compatibility.baseline, pkg.dsh.verifiedDsh);
 assert.ok(compatibility.verifiedRuntimeVersions.includes(compatibility.baseline));
 assert.ok(compatibility.verifiedRuntimeVersions.every(version => /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)));
 assert.equal(pkg.engines.dsh, compatibility.verifiedRuntimeVersions.join(' || '));
+for (const version of compatibility.verifiedRuntimeVersions.filter(version => version !== compatibility.baseline)) {
+    const evidence = JSON.parse(await readFile(await localFile(`compatibility/runtime-${version}.json`), 'utf8'));
+    assert.equal(evidence.passed, true);
+    assert.equal(evidence.runtimeVerified, true);
+    assert.equal(evidence.dsh, version);
+    assert.equal(evidence.plugin, pkg.version);
+}
 await localFile('docs/COMPATIBILITY.md');
 assert.deepEqual(Object.keys(pkg.dependencies ?? {}), []);
 assert.equal(pkg.scripts.prepare, undefined);

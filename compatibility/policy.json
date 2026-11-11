@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "package": "@deepseek-ai/dsh",
   "baseline": "0.2.1-rc.5",
-  "verifiedRuntimeVersions": ["0.2.1-rc.5"],
+  "verifiedRuntimeVersions": ["0.2.1-rc.5", "0.2.2-rc.1"],
   "registry": "https://registry.npmjs.org/",
   "contracts": [
     {"package": "@deepseek-ai/dsh-session", "methods": ["get", "list", "snapshotEvents"], "tokens": ["session/event"]},

@@ -35,7 +35,7 @@ Default storage: `<DSH_HOME>/plugin-data/dsh-session-rollover`, or `~/.dsh/plugi
 
 Summaries use deterministic extraction, without another model call or API key. Conversation continuation uses the model configured in DSH. Background jobs are recorded as handles and states; processes are not moved, resumed or restarted. Summary text is limited to 1500 characters and the full handoff message to 16 KiB; oversized handoffs fail with a notice. Automatic failures get at most two further retries, triggered by subsequent user messages.
 
-Compatibility was verified against DSH `0.2.1-rc.5` using an isolated host and local model fixture. This is not full acceptance for production models, Bot group channels or future host versions. Older hosts may omit this long description; the conversation `⋯` menu includes a built-in usage guide.
+Version `1.2.0` supports DSH `0.2.1-rc.5` and `0.2.2-rc.1`. The latter was tested in an isolated host with a local model fixture for ten-message rollover, model and workspace inheritance, todo continuation, archive controls and restart recovery. Version `1.1.1` excludes DSH `0.2.2-rc.1`; upgrade the plugin while retaining its data directory. This is not full acceptance for production models, Bot group channels or future host versions. Older hosts may omit this long description; the conversation `⋯` menu includes a built-in usage guide.
 
 Replace the old `@deepseek-ai/dsh-session-rollover` dependency and bundle rather than loading both versions. Back up profile configuration and plugin data before upgrading. See the Chinese [publishing and migration guide](./PUBLISHING.md).
 

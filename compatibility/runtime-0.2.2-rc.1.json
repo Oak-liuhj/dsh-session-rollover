@@ -1,0 +1,32 @@
+{
+  "passed": true,
+  "runtimeVerified": true,
+  "checkedAt": "2026-11-11T07:15:51.519Z",
+  "dsh": "0.2.2-rc.1",
+  "plugin": "1.2.0",
+  "platform": "Windows",
+  "environment": "installed DSH CLI with isolated home and profile",
+  "model": "localhost fixture only; no provider credentials or real model quality assessment",
+  "checks": {
+    "tenHumanMessagesOneRollover": true,
+    "workspaceAndDirectoryInherited": true,
+    "modelInherited": true,
+    "frozenTodosAndActiveStep": true,
+    "continuationTodoProgress": true,
+    "archivedReadonly": true,
+    "restoredWritePersistsAcrossRefresh": true,
+    "restoredVolumeDoesNotRolloverAgain": true,
+    "realHostRestartPreservesIndexAndSnapshot": true,
+    "anonymousHTTPStatus": 401,
+    "sourceNavigationAndCopyJSON": true,
+    "inlineSlotLifecycleFixedAndRechecked": true
+  },
+  "browser": "manual automation through computer-use; no plugin warnings after fix and real restart",
+  "limitation": "Host reconnect logged a native released-session-reference error; plugin UI recovered after page reload. No full Bot or production provider acceptance.",
+  "sourceDigests": {
+    "client.js": "25a484847caf9a2ec71b11817d3c147c83fd546f2f80582826df124d742c2b69",
+    "src/server/plugin.mjs": "6afd4b8d5e6c03082240ca2f7304bff9fd3ec0e28bfa32e1fe369458f4a48ae5",
+    "src/server/host-adapter.mjs": "d145284cfa392d64b00d45f40ab308b320d768dc23606bbdbb048c0db6b25dd6",
+    "src/server/compatibility.mjs": "89928506d1d0ddbd8d3d4ae5d5f4dfc00f2bf28fe66be3ae289fb6631269a9da"
+  }
+}
