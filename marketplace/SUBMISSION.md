@@ -2,6 +2,8 @@
 
 ## 投稿记录
 
+2026-11-11 复核：首次收录 PR 已于 **2026-11-10 00:46:29 UTC** 合并，官方 main 的条目存在，在线 `plugins.json` 已包含本插件。市场条目指向本仓库，不锁定插件版本，后续发布无需重复投稿同名条目。
+
 2026-11-09 已提交首次上架 PR：[awesome-dsh-plugin/awesome-dsh-plugin#13453](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/13453)。
 
 - 插件版本：`1.1.1`，投稿时已发布源码提交为 `541321a91e77942ba23bcc19267b2d5a8a79ccbf`。
@@ -10,6 +12,20 @@
 - 校验与审核的实时状态以 PR 页面为准。提交 PR 不等于市场已收录；正式收录还需维护者合并及目录后续构建。
 
 ## npm 发布记录
+
+### 1.2.0
+
+2026-11-11，`dsh-session-rollover@1.2.0` 已发布，npm 官方源 `latest` 为 `1.2.0`，声明支持 DSH `0.2.1-rc.5 || 0.2.2-rc.1`。
+
+- [npm 1.2.0](https://www.npmjs.com/package/dsh-session-rollover/v/1.2.0) 与 [GitHub Release v1.2.0](https://github.com/Oak-liuhj/dsh-session-rollover/releases/tag/v1.2.0) 均已公开；tag 指向 `5bfde1e93ca4021fc7fcab59609925125bc2f740`。
+- 两处实际下载的 tgz 均与审核包逐字节哈希一致；SHA256 为 `b35a9fa386d176e7dcc133e1a8bf36ac853ac7841786059bf302563c65c984a3`，SHA1 为 `7b1b69e17abfbc76a960f277a31092f70187f669`。GitHub 附有 `SHA256SUMS`。
+- 已从 npm 官方源按 `dsh-session-rollover@1.2.0` 隔离安装，并核对版本、宿主范围、导出入口及全部发布资源。未改动生产 profile。
+- 发布后的远程检查发现一个测试夹具将 Windows 的不存在盘符当作跨平台不可写路径；Linux 实际能创建该目录。提交 `0b526f057fdc1662ed3a7e7f2f973525578556c0` 改用文件阻挡父目录，不改变已发布的运行代码或安装包，也不移动既有 tag。
+- [远程复验](https://github.com/Oak-liuhj/dsh-session-rollover/actions/runs/42981276082) 全部通过：Windows/Linux、Node 22/24 四组回归与打包检查，以及三个 DSH 版本的公开声明检查。`v1.2.0` tag 的原始 CI 仍保留测试夹具失败记录。
+
+桌面用户更新到 1.2.0 后重启 DSH；镜像尚未同步时，可使用 GitHub Release 附件或 GitHub 源。后续 DSH 版本仍需逐版真实宿主验收。
+
+### 1.1.1
 
 2026-11-11 **13:51（北京时间）**，`dsh-session-rollover@1.1.1` 已正式发布到 [npm](https://www.npmjs.com/package/dsh-session-rollover/v/1.1.1)。npm 发布账号为 `oak-ai`，插件作者与 GitHub 仓库所有者为 `Oak-liuhj`。
 
@@ -34,4 +50,4 @@
 
 提交前确认公开 main 分支或安装目标包含 `client.js`、图标和截图；仓库 topic 包含 `dsh-plugin`，创建满一天。仓库创建时间核对为 2026-11-06 06:45:34 UTC，最早满一天时间为北京时间 **2026-11-07 14:45:34**。npm 发布可选，未发布 npm 时使用 GitHub 安装源。
 
-本目录的 YAML 已通过上述 PR 提交。市场收录、npm 发布和 GitHub Release 是独立状态；首次市场投稿未包含 npm 发布，后续 npm 发布见上方记录。本记录不表示已创建 GitHub Release。
+本目录的 YAML 已通过上述 PR 收录。市场收录、npm 发布和 GitHub Release 是独立状态；首次市场投稿未包含 npm 发布，后续 npm 与 GitHub Release 的核验见上方版本记录。

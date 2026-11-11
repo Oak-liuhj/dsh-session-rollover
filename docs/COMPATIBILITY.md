@@ -17,9 +17,9 @@
 | 公开声明 | `0.2.1-rc.5`、`0.2.2-alpha.3`、`0.2.2-rc.1` 的十一个组件包均通过 |
 | 发布包 | `1.2.0` 实际 tgz 隔离安装、服务端导出、预构建客户端和展示资源通过 |
 | 新版真实宿主 | `0.2.2-rc.1` 验收通过，保留旧基线并增加该确切版本；不放行其他未验收版本 |
-| 远程 CI | 已编写工作流；本地提交不代表远程已启用，需推送默认分支后运行 |
+| 远程 CI | Windows/Linux、Node 22/24 四组回归与打包、三个版本的声明检查均通过；见下方远程复验记录 |
 
-声明报告和安装包校验报告分别保存在 `out/dsh-compatibility.json`、`out/package-verification.json`；它们不是实际宿主验收报告。其他平台及 Node 版本由远程矩阵执行，本轮未在本机验证。
+声明报告和安装包校验报告分别保存在 `out/dsh-compatibility.json`、`out/package-verification.json`；它们不是实际宿主验收报告。远程矩阵已通过 [运行 42981276082](https://github.com/Oak-liuhj/dsh-session-rollover/actions/runs/42981276082)。首次 Linux 运行发现 Windows 专用的不可写目录测试夹具不成立，已改为文件阻挡父目录并通过复验；该修复只影响测试，不改变发布包的运行代码。`v1.2.0` tag 原始失败记录保留，详见 [发布记录](../marketplace/SUBMISSION.md)。
 
 真实宿主记录见 [runtime-0.2.2-rc.1.json](../compatibility/runtime-0.2.2-rc.1.json)：十条用户消息仅分卷一次，继承工作区、目录及模型，待办快照保持不变，新卷实时待办可继续推进，来源跳转、复制 JSON、双向归档开关和宿主重启恢复正常，匿名 HTTP 请求返回 401。本轮使用本地模型夹具，不代表真实服务商模型或 Bot 端完整验收。
 
