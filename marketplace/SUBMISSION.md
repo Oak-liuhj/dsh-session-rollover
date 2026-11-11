@@ -2,6 +2,8 @@
 
 ## 投稿记录
 
+2026-11-11 已提交市场更新 PR：[awesome-dsh-plugin/awesome-dsh-plugin#14240](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/14240)。只修改现有条目的中英文简介，补充宿主兼容检查；正文说明 1.2.0 已发布及支持的 DSH 版本，并附真实宿主与远程 CI 证据。分支为 `Oak-liuhj:codex/update-dsh-session-rollover-1-2-0`，提交为 `5cd4d474f448a42fc2828978d6e215f9078447e8`。提交不代表已合并，npm/version 元数据仍由市场自动采集。
+
 2026-11-11 复核：首次收录 PR 已于 **2026-11-10 00:46:29 UTC** 合并，官方 main 的条目存在，在线 `plugins.json` 已包含本插件。市场条目指向本仓库，不锁定插件版本，后续发布无需重复投稿同名条目。
 
 本次发布后再次下载目录，条目的 `npm`、`version` 展示字段仍为 `null`，需等待市场重新抓取元数据；不据此宣称市场已显示 1.2.0。GitHub main 已包含新版代码，npm 官方源按包名可安装 1.2.0。
@@ -42,7 +44,7 @@
 
 投稿目录为 [awesome-dsh-plugin/awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin)，市场应用代码仓库 `dsh-market/dsh-market` 不是插件条目的投稿目标。规则来源：[contributing.md](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/blob/main/contributing.md)（核对于 2026-11-07）。
 
-仅新增 `data/plugins/Oak-liuhj__dsh-session-rollover.yml`，内容使用本目录同名文件；不手改自动生成的 README，不增加 npm/version/tags 等非目录字段。
+首次投稿仅新增 `data/plugins/Oak-liuhj__dsh-session-rollover.yml`，后续更新修改同一文件，内容使用本目录同名文件；不手改自动生成的 README，不增加 npm/version/tags 等非目录字段。投稿规则已于 2026-11-11 再次核对，npm 关联无需另行通知维护者。
 
 建议 PR 标题：`Add Oak-liuhj/dsh-session-rollover`
 
