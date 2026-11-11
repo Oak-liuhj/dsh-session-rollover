@@ -44,11 +44,27 @@
 
 需要已配置模型、可正常对话的 DSH 宿主。浏览器入口随包预构建，安装插件时无需自行构建。
 
-市场收录后，可在 DSH 插件市场搜索 `dsh-session-rollover` 安装并启用。也可选择以下安装方式；GitHub 安装获取仓库中已推送的代码，发布前验证请使用本地安装包。
+可在 DSH 插件市场搜索 `dsh-session-rollover` 安装并启用，也可通过插件包名、GitHub 源或本地安装包安装。
+
+### 通过 npm 包名安装
+
+在桌面客户端的「插件 → 添加插件 → 填入插件 npm 包名」中填写：
+
+```text
+dsh-session-rollover
+```
+
+使用 CLI 时，以下命令以桌面 `desktop` profile 为例；Web 用户请替换为实际使用的 profile 名称：
+
+```powershell
+dsh plugin --profile desktop add dsh-session-rollover
+```
+
+此方式从 npm 下载发布包。国内镜像可能延迟同步；遇到 npm 404 时，先确认镜像已同步，或使用下方 GitHub 安装方式。
 
 ### 从 GitHub 安装
 
-以下命令以桌面 `desktop` profile 为例；Web 用户请替换为实际使用的 profile 名称。
+此方式获取 GitHub 仓库中已推送的代码：
 
 ```powershell
 dsh plugin --profile desktop add github:Oak-liuhj/dsh-session-rollover
