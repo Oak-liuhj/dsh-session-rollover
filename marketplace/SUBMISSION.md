@@ -4,6 +4,8 @@
 
 2026-11-11 复核：首次收录 PR 已于 **2026-11-10 00:46:29 UTC** 合并，官方 main 的条目存在，在线 `plugins.json` 已包含本插件。市场条目指向本仓库，不锁定插件版本，后续发布无需重复投稿同名条目。
 
+本次发布后再次下载目录，条目的 `npm`、`version` 展示字段仍为 `null`，需等待市场重新抓取元数据；不据此宣称市场已显示 1.2.0。GitHub main 已包含新版代码，npm 官方源按包名可安装 1.2.0。
+
 2026-11-09 已提交首次上架 PR：[awesome-dsh-plugin/awesome-dsh-plugin#13453](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/13453)。
 
 - 插件版本：`1.1.1`，投稿时已发布源码提交为 `541321a91e77942ba23bcc19267b2d5a8a79ccbf`。
