@@ -69,8 +69,8 @@ function validateModel(selection) {
 
 export function readModelSelection(ctx, services, session) {
     const agent = services.agents?.get?.(session.id);
-    if (agent) {
-        if (typeof agent.model?.current !== 'function') throw new Error('agents.model.current:method-required');
+    // 旧宿主也可能提供 agents，但尚无 model.current；此时仍走经过结构校验的投影入口。
+    if (typeof agent?.model?.current === 'function') {
         const current = validateModel(agent.model.current());
         if (current != null) return current;
     }

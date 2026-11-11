@@ -47,6 +47,14 @@ test('新版领域服务优先读取目录和活动模型，不调用弃用投�
     assert.equal(f.calls.model[0].model, 'selected');
 });
 
+test('旧宿主已有 agents 但没有 model.current 时，仍从有效投影继承模型', async () => {
+    const f = fixture();
+    f.ctx.agents = {get: () => ({session: f.sessions.get('old')})};
+    assert.equal((await f.plugin.rolloverNow('old')).status, 'rolled-over');
+    assert.equal(f.calls.model[0].provider, 'original');
+    assert.equal(f.calls.model[0].model, 'model');
+});
+
 test('未知模型结构不能静默回落默认模型；合法的空选择仍可建卷', async () => {
     for (const value of [{selected: {provider: 'changed', model: 'changed'}}, {lastUsed: {provider: 'incomplete'}}]) {
         const f = fixture();

@@ -1,7 +1,7 @@
 {
   "passed": true,
   "runtimeVerified": true,
-  "checkedAt": "2026-11-11T07:15:51.519Z",
+  "checkedAt": "2026-11-11T07:26:36.784Z",
   "dsh": "0.2.2-rc.1",
   "plugin": "1.2.0",
   "platform": "Windows",
@@ -27,6 +27,6 @@
     "client.js": "25a484847caf9a2ec71b11817d3c147c83fd546f2f80582826df124d742c2b69",
     "src/server/plugin.mjs": "6afd4b8d5e6c03082240ca2f7304bff9fd3ec0e28bfa32e1fe369458f4a48ae5",
     "src/server/host-adapter.mjs": "d145284cfa392d64b00d45f40ab308b320d768dc23606bbdbb048c0db6b25dd6",
-    "src/server/compatibility.mjs": "89928506d1d0ddbd8d3d4ae5d5f4dfc00f2bf28fe66be3ae289fb6631269a9da"
+    "src/server/compatibility.mjs": "5572940c2bb6fc16dd0393f369417bd9acc025ab65fd7df5f370ededf454ce38"
   }
 }
