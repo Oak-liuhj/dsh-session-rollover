@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync, readFileSync} from 'node:fs';
+import {mkdtempSync, readFileSync, writeFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createClusterIndex, rebuildFromTitles, FIELDS} from '../../src/domain/cluster-index.mjs';
@@ -43,10 +43,15 @@ test('对账重建：索引=缓存，标题 -N + cluster: 标记可重建七字�
   assert.equal(idx.get('s3').vol_no, 0);
   assert.equal(idx.cluster('c-real').length, 2); // 无标记成员按同 base 归簇
 });
-test('目录不可写：显式降级纯内存（degraded+日志码），不抛不静默', () => {
+test('目录不可写：显式降级纯内存（degraded+日志码），不抛不静默', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'rollover-unwritable-'));
+  t.after(() => rmSync(dir, {recursive: true, force: true}));
+  // 文件不能作为父目录：在 Windows/Linux 和高权限运行器上都稳定失败。
+  const blocked = join(dir, 'file-as-parent');
+  writeFileSync(blocked, 'fixture');
   const idx = createClusterIndex();
   idx.record({ sessionId: 's1', clusterId: 'c1', volNo: 1, nameSuffix: '-1' });
-  const p = attachFilePersistence(idx, 'X:\\盘符不存在\\rollover');
+  const p = attachFilePersistence(idx, join(blocked, 'rollover'));
   assert.equal(p.persist(), null);
   assert.equal(p.degraded, true);
   assert.ok(p.lastError); // 日志码 cluster-index-missing 的数据面
