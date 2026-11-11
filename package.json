@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-rollover",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "description": "DSH 会话分卷与续接：自动分卷、待办交接快照、来源回溯和归档只读，支持 Web 与桌面客户端。",
   "main": "index.js",
@@ -39,6 +39,8 @@
     "docs/screenshots/help-light.png",
     "docs/screenshots/help-dark.png",
     "marketplace/",
+    "compatibility/",
+    "docs/COMPATIBILITY.md",
     "docs/r3-demo.html",
     "docs/screenshots/prototype-fixed.png",
     "docs/live-host-validation.json",
@@ -51,7 +53,9 @@
     "pretest": "npm run build",
     "prepack": "npm run build && node scripts/check-release.mjs",
     "test": "node --test \"test/**/*.test.mjs\"",
-    "check:release": "npm run build:check && node scripts/check-release.mjs"
+    "check:release": "npm run build:check && node scripts/check-release.mjs",
+    "check:dsh": "node scripts/check-dsh-compatibility.mjs",
+    "check:package": "npm run check:release && node scripts/check-package.mjs"
   },
   "dsh": {
     "manifestVersion": 1,

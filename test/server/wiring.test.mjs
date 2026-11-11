@@ -26,12 +26,13 @@ function createCtx({ turns = 10, todos }) {
       rename: (s, title) => { calls.rename.push({ id: s.id, title }); s.title = title; },
     },
     sessionController: {
+      selectModel: async () => {},
       create: async () => { calls.create += 1; seq += 1; const s = { id: `s-new-${seq}`, header: {}, snapshotEvents: () => [] }; sessions.set(s.id, s); return { sessionId: s.id }; },
       // 工程约定：假宿主必须与真宿主同形 —— data.content=[{type:'text',text}]，
       // 禁止再用扁平 {text}；夹具形状失真等于没测（eventsToMessages 恒 false 的一课）。
       prompt: async (req) => { calls.prompt.push(req); const s = sessions.get(req.sessionId); s.events = [{ kind: 'user/message', data: { content: [{ type: 'text', text: req.content[0].text }] } }]; s.snapshotEvents = () => s.events; },
     },
-    sessionProjections: { stateOf: () => todos },
+    sessionProjections: { stateOf: (_session, name) => name === 'modelSelection' ? null : name === 'workingDirectory' ? undefined : todos },
     on: (name, fn) => { calls.events.push(name); },
     effect: () => {},
     logger: () => ({ info: () => {} }),

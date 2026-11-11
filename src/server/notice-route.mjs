@@ -54,6 +54,12 @@ export async function handleSessionRequest(plugin, req, res) {
         try { input = JSON.parse(body); } catch { return send(400, {error: 'invalid-json'}); }
         if (!/^[\w-]{1,160}$/.test(input?.sessionId ?? '')) return send(400, {error: 'invalid-session'});
         if (!plugin.sessionOf(input.sessionId)) return send(404, {error: 'session-unavailable'});
+        if (['rollover', 'new'].includes(input.action)) {
+            const compatibility = plugin.handoffInfo(input.sessionId).compatibility;
+            if (compatibility && !compatibility.compatible) {
+                return send(503, {error: 'host-incompatible', message: compatibility.message, compatibility});
+            }
+        }
         if (input.action === 'readonly' && typeof input.readonly === 'boolean') {
             if (!plugin.handoffInfo(input.sessionId).sealed) return send(409, {error: 'session-not-archived'});
             return send(200, plugin.setReadonly(input.sessionId, input.readonly));

@@ -11,6 +11,7 @@ import {transitionInFlight} from '../domain/mode.mjs';
 import {createNoticeStore} from '../storage/notices.mjs';
 import {createHostAdapter} from './host-adapter.mjs';
 import {attachNoticeRoutes, handlePendingNotices} from './notice-route.mjs';
+import {inspectHost, preflightHost, INCOMPATIBLE_MESSAGE} from './compatibility.mjs';
 
 const inflightKey = (id) => `rollover:${id}`;
 
@@ -27,6 +28,7 @@ const NOTICE_TEXT = {
     'cluster-cap': '同簇已达 9 卷上限，请新建独立会话继续。',
     'storage-unavailable': '分卷数据目录不可写，已保留原会话，请检查目录后重试。',
     'user-renamed': '已保留手动设置的会话名称。',
+    'host-incompatible': INCOMPATIBLE_MESSAGE,
 };
 
 /**
@@ -52,9 +54,10 @@ export default class SessionRolloverPlugin {
         this.ctx = ctx;
         this.services = typeof ctx.inject === 'function' ? {} : ctx;
         if (ctx.inject) {
-            for (const name of ['jobs', 'agentDefaultModel']) ctx.inject([name], scope => {
-                this.services[name] = scope[name];
-                scope.effect?.(() => () => { delete this.services[name]; });
+            for (const name of ['jobs', 'agentDefaultModel', 'workingDirectory', 'agents']) ctx.inject([name], scope => {
+                const service = scope[name];
+                this.services[name] = service;
+                scope.effect?.(() => () => { if (this.services[name] === service) delete this.services[name]; });
             });
         }
         this.config = {mode: 'auto', threshold: DEFAULT_THRESHOLD, ...config};
@@ -72,6 +75,7 @@ export default class SessionRolloverPlugin {
             rollover: (id) => this.rolloverNow(id),
             info: (id) => this.handoffInfo(id),
             setReadonly: (id, value) => this.setReadonly(id, value),
+            compatibility: () => inspectHost(this.ctx),
         });
         ctx.effect(() => () => {
             this.busy.clear();
@@ -87,6 +91,7 @@ export default class SessionRolloverPlugin {
         this.log('boot', {
             dataDir: this.dataDir, mode: this.config.mode, threshold: this.config.threshold,
             degraded: this.persistence.degraded, notices: this.notices.path, noticesDegraded: this.notices.degraded,
+            compatibility: inspectHost(ctx),
         });
     }
 
@@ -126,13 +131,21 @@ export default class SessionRolloverPlugin {
 
     /** 启动修复缓存缺项；失败注入产生的待清理卷不参与有效父链。 */
     reconcileIndex() {
+        if (!inspectHost(this.ctx).compatible) return;
+        let sessions;
+        try { sessions = this.ctx.sessions.list(); } catch { return; }
+        if (!Array.isArray(sessions)) return;
         let changed = false;
         const abandoned = new Set(this.state.pendingList().map(r => r.sessionId));
         const snapshots = new Map();
-        for (const session of this.ctx.sessions.list()) {
+        for (const session of sessions) {
+            if (!session || typeof session.id !== 'string') continue;
             if (abandoned.has(session.id)) continue;
             let h;
-            for (const e of session.snapshotEvents()) {
+            let events;
+            try { events = session.snapshotEvents(); } catch { continue; }
+            if (!Array.isArray(events)) continue;
+            for (const e of events) {
                 const text = textOf(e);
                 if (!text.startsWith('【分卷交接】')) continue;
                 try { h = JSON.parse(/```json\s*([\s\S]*?)```/.exec(text)?.[1]); } catch { /* 非本插件快照 */ }
@@ -204,20 +217,24 @@ export default class SessionRolloverPlugin {
         const parent = handoff?.cluster?.independent ? null : handoff?.from_session_id ?? record?.parent_session_id;
         let title = handoff?.from_title || parent;
         const source = parent && this.sessionOf(parent);
-        if (source) title = this.ctx.sessionTitle.get(source)?.title || title;
+        if (source) { try { title = this.ctx.sessionTitle.get(source)?.title || title; } catch {} }
         const session = this.sessionOf(id);
-        const events = session?.snapshotEvents() ?? [];
+        let events = [];
+        try { const snapshot = session?.snapshotEvents?.(); if (Array.isArray(snapshot)) events = snapshot; } catch {}
+        let sessionTitle = '';
+        try { sessionTitle = session ? this.ctx.sessionTitle.get(session)?.title ?? '' : ''; } catch {}
         const sealed = record?.rollover_state === 'sealed';
         const turnCount = countTurns(events);
         const children = record ? this.index.cluster(record.cluster_id).filter(r => r.parent_session_id === id) : [];
         const retry = this.state.retryGet(id).attempts;
         return {source: parent ? {sessionId: parent, title} : null, handoff,
             readonly: this.isReadonly(id), sealed, sessionId: id,
-            title: session ? this.ctx.sessionTitle.get(session)?.title ?? '' : '',
+            title: sessionTitle,
+            compatibility: session ? preflightHost(this.ctx, session, this.services) : inspectHost(this.ctx),
             turnCount, threshold: this.config.threshold, volume: record?.vol_no ?? null, cap: 9,
             capped: record?.vol_no >= 9, summaryRetry: retry,
             retryLimitReached: retry >= 3, degraded: this.persistence.degraded || !!this.stateDegraded?.has(id),
-            previousTurnCount: parent && this.sessionOf(parent) ? countTurns(this.sessionOf(parent).snapshotEvents()) : null,
+            previousTurnCount: source ? (() => { try { const e = source.snapshotEvents(); return Array.isArray(e) ? countTurns(e) : null; } catch { return null; } })() : null,
             nextSessionId: children[0]?.sessionId ?? null};
     }
 
@@ -241,6 +258,8 @@ export default class SessionRolloverPlugin {
     async rolloverNow(id) {
         const session = this.sessionOf(id);
         if (!session) return {status: 'failed', reason: 'session-unavailable'};
+        const compatibility = preflightHost(this.ctx, session, this.services);
+        if (!compatibility.compatible) return {status: 'failed', reason: 'host-incompatible', compatibility};
         if (this.busy.has(inflightKey(id))) return {status: 'skipped', reason: 'busy'};
         if (this.index.get(id)?.rollover_state === 'sealed') return {status: 'skipped', reason: 'readonly'};
         this.busy.add(inflightKey(id));
@@ -300,6 +319,11 @@ export default class SessionRolloverPlugin {
         const session = agent?.session;
         if (!session?.id) return;
         const id = session.id;
+        const compatibility = preflightHost(this.ctx, session, this.services);
+        if (!compatibility.compatible) {
+            this.notifyOnce(session, {reason: 'host-incompatible'});
+            return;
+        }
         if (this.busy.has(inflightKey(id))) return;
         // 已封卷的 -N 永不再分卷：B9 的手动开关只放行「在旧卷继续写」，不等于再开新卷。
         try {

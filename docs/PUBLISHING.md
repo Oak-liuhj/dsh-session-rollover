@@ -1,12 +1,13 @@
 # 发布与升级指南
 
-公开包名为 `dsh-session-rollover`，版本 1.1.1，维护者 Oak-liuhj。仓库：[Oak-liuhj/dsh-session-rollover](https://github.com/Oak-liuhj/dsh-session-rollover)。支持在宿主中直接填写 npm 包名安装；维护者需将实际发布包上传到 npm 官方注册表，市场收录不代替 npm 发布。
+公开包名为 `dsh-session-rollover`，已发布版本 1.1.1；本地开发版本 1.2.0 待发布，维护者 Oak-liuhj。仓库：[Oak-liuhj/dsh-session-rollover](https://github.com/Oak-liuhj/dsh-session-rollover)。支持在宿主中直接填写 npm 包名安装；市场收录不代替 npm 发布。
 
 ## 构建与打包
 
 ```powershell
 npm test
 npm run check:release
+npm run check:package
 npm pack --pack-destination D:/release
 ```
 
@@ -21,8 +22,8 @@ npm pack --pack-destination D:/release
 ```powershell
 npm login --auth-type=web --registry=https://registry.npmjs.org/
 npm whoami --registry=https://registry.npmjs.org/
-npm publish "D:/release/dsh-session-rollover-1.1.1.tgz" --access public --registry=https://registry.npmjs.org/
-npm view dsh-session-rollover@1.1.1 version dist.integrity --registry=https://registry.npmjs.org/
+npm publish "D:/release/dsh-session-rollover-1.2.0.tgz" --access public --registry=https://registry.npmjs.org/
+npm view dsh-session-rollover@1.2.0 version dist.integrity --registry=https://registry.npmjs.org/
 ```
 
 4. 在隔离目录从 npm 安装并核对包名、版本、挂载补丁、预构建客户端与模块导入；只有 npm 返回该版本且下载验证通过，才确认包名安装可用。
@@ -52,7 +53,7 @@ CLI 登录授权、注册安全密钥和本次发布的本人认证是不同步�
 2. 通过桌面插件管理器/宿主支持的依赖管理渠道，将 `@deepseek-ai/dsh-session-rollover` 替换为新包。CLI 可使用 `dsh plugin --profile desktop remove @deepseek-ai/dsh-session-rollover`，然后 `dsh plugin --profile desktop add <本地tgz或GitHub源>`。分步操作时先停止宿主，避免短暂缺包。
 3. profile 的 `dsh.profile.bundles` 只保留新包一次；显式 Cordis 节点的 `name` 改为新包名，原 `id: session-rollover`、用户配置值和相邻插件保留。不可同时加载两个包来注册同一个服务。不能只覆盖 node_modules 而保留过期依赖来源。
 4. 从桌面客户端重启实际宿主；不要用普通 Web profile 的重启操作接管桌面生命周期。
-5. 核实已加载 1.1.1、面板图标/简介、会话 `⋯ → 使用说明`、旧卷快照和只读状态。不要为了安装验证向生产会话发送测试消息。
+5. 核实已加载目标版本、面板图标/简介、会话 `⋯ → 使用说明`、旧卷快照和只读状态。不要为了安装验证向生产会话发送测试消息。
 
 本次更名不迁移数据；数据目录、`sessionRollover`、HTTP 路由、Cordis id 和旧 `src/*` 导出保持兼容。卸载也不删除数据。回滚时停止宿主，恢复备份的 profile 配置、锁文件和依赖，再重启；不要覆盖更新后已产生的用户数据。
 
@@ -76,4 +77,4 @@ CLI 登录授权、注册安全密钥和本次发布的本人认证是不同步�
 3. 等仓库创建满一天并确保 topic 为 `dsh-plugin`。按 [投稿材料](../marketplace/SUBMISSION.md) 向官方插件目录发起 PR。
 4. 确认市场抓取后的简介、图标、截图及安装源正确；外部收录前不要宣称已上架。
 
-`engines.dsh` 保持已验证的 `0.2.1-rc.5`，不推测扩大兼容区间。许可证声明为 `(Apache-2.0 AND MIT)`，必须同时分发 LICENSE、LICENSE.upstream 和 NOTICE。
+`engines.dsh` 由 `compatibility/policy.json` 中实际完成宿主验收的确切版本组成，不推测扩大兼容区间；声明扫描通过后仍需执行 [升级验收](./COMPATIBILITY.md)。许可证声明为 `(Apache-2.0 AND MIT)`，必须同时分发 LICENSE、LICENSE.upstream 和 NOTICE。

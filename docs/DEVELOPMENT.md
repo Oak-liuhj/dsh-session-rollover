@@ -29,6 +29,8 @@ R2 面板可继续调用原有 rollover/info 服务；无实时 `todo/write` 时
 
 `connection` 为显式必需注入；`jobs`、`agentDefaultModel` 通过独立可选注入获取，避免 Cordis 未声明服务访问报错。
 
+`workingDirectory`、`agents` 同样通过可选注入获取，用于新版领域状态读取。`sessionRollover.compatibility()` 返回关键方法的能力报告；会话 `info().compatibility` 还检查读取结果形状。逐版检查、CI 与真实宿主验收流程见 [升级适配指南](./COMPATIBILITY.md)。
+
 ## 项目结构
 
 ```text
@@ -76,6 +78,7 @@ docs/r3-demo.html               固定数据交互原型
 ```powershell
 npm test
 npm run check:release
+npm run check:package
 npm pack --dry-run
 npm pack --pack-destination <输出目录>
 ```

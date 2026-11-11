@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "package": "@deepseek-ai/dsh",
+  "baseline": "0.2.1-rc.5",
+  "verifiedRuntimeVersions": ["0.2.1-rc.5"],
+  "registry": "https://registry.npmjs.org/",
+  "contracts": [
+    {"package": "@deepseek-ai/dsh-session", "methods": ["get", "list", "snapshotEvents"], "tokens": ["session/event"]},
+    {"package": "@deepseek-ai/dsh-session-title", "methods": ["get", "rename"]},
+    {"package": "@deepseek-ai/dsh-api-session-controller", "methods": ["create", "prompt", "selectModel"]},
+    {"package": "@deepseek-ai/dsh-session-projection", "methods": ["stateOf"]},
+    {"package": "@deepseek-ai/dsh-working-directory", "methods": ["get"]},
+    {"package": "@deepseek-ai/dsh-workspace", "methods": ["list"], "tokens": ["sessionIds"]},
+    {"package": "@deepseek-ai/dsh-agent", "methods": ["get", "current"], "tokens": ["agent/pre-step", "reject"],
+      "versionOverrides": {"0.2.1-rc.5": {"methods": ["get"]}}},
+    {"package": "@deepseek-ai/dsh-client-connection", "methods": ["admit"]},
+    {"package": "@deepseek-ai/dsh-client-ui-conversation", "methods": ["storeFor", "set"], "tokens": ["conversation.session.header.actions", "conversation.input.dock", "blocks"]},
+    {"package": "@deepseek-ai/dsh-client-ui-workspace", "methods": ["openSession"], "alternatives": [["sidebar.session.row.trailing", "sidebar.session.row.leading"]]},
+    {"package": "@deepseek-ai/dsh-client-ui-slots", "methods": ["register"]}
+  ]
+}

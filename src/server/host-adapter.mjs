@@ -2,6 +2,7 @@
 import {eventType} from '../domain/turns.mjs';
 import {openToolCalls} from '../domain/inflight.mjs';
 import {lastTodos} from '../domain/todos.mjs';
+import {preflightHost, readWorkingDirectory, readModelSelection} from './compatibility.mjs';
 
 /**
  * 为一个来源会话创建适配器。新卷继承其工作区和模型选择。
@@ -14,6 +15,8 @@ import {lastTodos} from '../domain/todos.mjs';
  * @returns {object} performRollover 所需的异步宿主接口
  */
 export function createHostAdapter({ctx, session, state, sessionOf, log, services = ctx}) {
+    const compatibility = preflightHost(ctx, session, services);
+    if (!compatibility.compatible) throw new Error(`host-incompatible: ${compatibility.missing.join(', ')}`);
     const id = session.id;
     const sourceEvents = session.snapshotEvents().slice();
     const registry = services.jobs;
@@ -101,16 +104,17 @@ export function createHostAdapter({ctx, session, state, sessionOf, log, services
         },
         createSession: async () => {
             // 优先归入来源工作区；来源不属于工作区时才按其 cwd 建会话。
-            const cwd = ctx.sessionProjections.stateOf(session, 'workingDirectory');
+            const cwd = readWorkingDirectory(ctx, services, session);
             const workspace = ctx.workspaceRegistry.list().find(w => w.sessionIds.includes(session.id));
-            return ctx.sessionController.create(workspace ? {workspaceId: workspace.id} : typeof cwd === 'string' ? {cwd} : {});
+            const created = await ctx.sessionController.create(workspace ? {workspaceId: workspace.id} : typeof cwd === 'string' ? {cwd} : {});
+            if (!/^[\w-]{1,160}$/.test(created?.sessionId ?? '')) throw new Error('host-incompatible: create.sessionId');
+            return created;
         },
         injectFirstMessage: async (sessionId, text) => {
             // 宿主 create() 建的是空壳会话，没有 model selection，会落到默认 provider
             // （实测 "deepseek-official" 无 key → MISSING_CREDENTIAL）。先继承旧卷的模型，再注入。
             try {
-                const sel = ctx.sessionProjections.stateOf(session, 'modelSelection');
-                const pick = sel?.pending ?? sel?.lastUsed;
+                const pick = readModelSelection(ctx, services, session);
                 if (pick?.provider && pick?.model) {
                     await ctx.sessionController.selectModel({
                         sessionId, provider: pick.provider, model: pick.model,
