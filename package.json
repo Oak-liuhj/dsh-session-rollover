@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-rollover",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "DSH 会话分卷与续接：自动分卷、待办交接快照、来源回溯和归档只读，支持 Web 与桌面客户端。",
   "main": "index.js",
@@ -100,6 +100,6 @@
     "registry": "https://registry.npmjs.org/"
   },
   "engines": {
-    "dsh": "0.2.1-rc.5 || 0.2.2-rc.1"
+    "dsh": "0.2.1-rc.5 || >=0.2.2-rc.1 <0.3.0-0"
   }
 }

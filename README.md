@@ -8,7 +8,7 @@
 
 适合持续编码、问题排查和多步骤任务。支持 Web 与桌面客户端，无需为插件单独配置 API Key。
 
-**版本 1.2.0** · **支持 DSH 0.2.1-rc.5 / 0.2.2-rc.1** · **维护者 Oak-liuhj**
+**版本 1.2.1** · **兼容范围：DSH 0.2.1-rc.5 或 ≥0.2.2-rc.1、<0.3.0-0** · **维护者 Oak-liuhj**
 
 [使用指南](./docs/DETAIL.zh-CN.md) · [English guide](./docs/DETAIL.md) · [更新记录](./CHANGELOG.md) · [问题反馈](https://github.com/Oak-liuhj/dsh-session-rollover/issues)
 
@@ -44,7 +44,7 @@
 
 需要已配置模型、可正常对话的 DSH 宿主。浏览器入口随包预构建，安装插件时无需自行构建。
 
-`1.2.0` 支持 DSH `0.2.1-rc.5` 和已完成实机验收的 `0.2.2-rc.1`。旧版 `1.1.1` 只声明支持前者，在新版宿主中会被阻止启用；请更新兼容版本，保留原数据目录。后续版本通过逐版检查和真实宿主验收适配；关键接口变化时暂停分卷并提示。维护机制与证据边界见 [DSH 升级适配](docs/COMPATIBILITY.md)。
+`1.2.1` 的安装兼容范围为 `0.2.1-rc.5 || >=0.2.2-rc.1 <0.3.0-0`，包括 `0.2.2-rc.3` 及范围内后续预发布、正式和补丁版本，不包含 `0.3.0` 的任何预发布或正式版本。升级时保留原数据目录。历史实机验收版本为 `0.2.1-rc.5`、`0.2.2-rc.1`；扩大安装范围不等于所有版本均已实测。后续逐版检查继续运行，关键接口变化时暂停分卷并提示。维护机制与证据边界见 [DSH 升级适配](docs/COMPATIBILITY.md)。
 
 可在 DSH 插件市场搜索 `dsh-session-rollover` 安装并启用，也可通过插件包名、GitHub 源或本地安装包安装。
 
@@ -77,7 +77,7 @@ dsh plugin --profile desktop add github:Oak-liuhj/dsh-session-rollover
 将路径替换为实际 tgz 文件位置：
 
 ```powershell
-dsh plugin --profile desktop add "D:/release/dsh-session-rollover-1.2.0.tgz"
+dsh plugin --profile desktop add "D:/release/dsh-session-rollover-1.2.1.tgz"
 ```
 
 桌面用户安装后，请通过桌面客户端重启宿主。已安装旧包 `@deepseek-ai/dsh-session-rollover` 时，应先替换旧依赖，避免同时加载新旧两份插件；升级前备份配置与插件数据。详细步骤见 [升级指南](./docs/PUBLISHING.md#从-scoped-旧包迁移)。

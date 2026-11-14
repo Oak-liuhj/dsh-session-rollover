@@ -1,6 +1,6 @@
 # 发布与升级指南
 
-公开包名为 `dsh-session-rollover`，当前版本 1.2.0，维护者 Oak-liuhj。仓库：[Oak-liuhj/dsh-session-rollover](https://github.com/Oak-liuhj/dsh-session-rollover)。支持在宿主中直接填写 npm 包名安装；市场收录不代替 npm 发布。实际公开版本以 npm 官方源和 GitHub Release 为准，发布核验记录见 [投稿材料](../marketplace/SUBMISSION.md)。
+公开包名为 `dsh-session-rollover`，当前源码版本 1.2.1，维护者 Oak-liuhj。仓库：[Oak-liuhj/dsh-session-rollover](https://github.com/Oak-liuhj/dsh-session-rollover)。支持在宿主中直接填写 npm 包名安装；市场收录不代替 npm 发布。实际公开版本以 npm 官方源和 GitHub Release 为准，发布核验记录见 [投稿材料](../marketplace/SUBMISSION.md)。
 
 ## 构建与打包
 
@@ -22,8 +22,8 @@ npm pack --pack-destination D:/release
 ```powershell
 npm login --auth-type=web --registry=https://registry.npmjs.org/
 npm whoami --registry=https://registry.npmjs.org/
-npm publish "D:/release/dsh-session-rollover-1.2.0.tgz" --access public --registry=https://registry.npmjs.org/
-npm view dsh-session-rollover@1.2.0 version dist.integrity --registry=https://registry.npmjs.org/
+npm publish "D:/release/dsh-session-rollover-1.2.1.tgz" --access public --registry=https://registry.npmjs.org/
+npm view dsh-session-rollover@1.2.1 version dist.integrity --registry=https://registry.npmjs.org/
 ```
 
 4. 在隔离目录从 npm 安装并核对包名、版本、挂载补丁、预构建客户端与模块导入；只有 npm 返回该版本且下载验证通过，才确认包名安装可用。
@@ -77,4 +77,4 @@ CLI 登录授权、注册安全密钥和本次发布的本人认证是不同步�
 3. 等仓库创建满一天并确保 topic 为 `dsh-plugin`。按 [投稿材料](../marketplace/SUBMISSION.md) 向官方插件目录发起 PR。
 4. 确认市场抓取后的简介、图标、截图及安装源正确；外部收录前不要宣称已上架。
 
-`engines.dsh` 由 `compatibility/policy.json` 中实际完成宿主验收的确切版本组成，不推测扩大兼容区间；声明扫描通过后仍需执行 [升级验收](./COMPATIBILITY.md)。许可证声明为 `(Apache-2.0 AND MIT)`，必须同时分发 LICENSE、LICENSE.upstream 和 NOTICE。
+`engines.dsh` 与 `compatibility/policy.json` 的 `supportedRuntimeRange` 一致，当前为 `0.2.1-rc.5 || >=0.2.2-rc.1 <0.3.0-0`；`verifiedRuntimeVersions` 独立记录真实宿主验收，不决定安装范围，也不因包版本更新而改写历史证据中的插件版本。声明扫描通过后仍按 [升级验收](./COMPATIBILITY.md) 补充实机记录。许可证声明为 `(Apache-2.0 AND MIT)`，必须同时分发 LICENSE、LICENSE.upstream 和 NOTICE。

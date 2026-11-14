@@ -1,7 +1,8 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "package": "@deepseek-ai/dsh",
   "baseline": "0.2.1-rc.5",
+  "supportedRuntimeRange": "0.2.1-rc.5 || >=0.2.2-rc.1 <0.3.0-0",
   "verifiedRuntimeVersions": ["0.2.1-rc.5", "0.2.2-rc.1"],
   "registry": "https://registry.npmjs.org/",
   "contracts": [

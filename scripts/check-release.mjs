@@ -26,16 +26,21 @@ assert.ok(pkg.keywords.includes('dsh-plugin'));
 assert.equal(pkg.dsh.manifestVersion, 1);
 assert.equal(pkg.dsh.client.platform, 'web');
 const compatibility = JSON.parse(await readFile(await localFile('compatibility/policy.json'), 'utf8'));
+assert.equal(compatibility.schemaVersion, 2);
 assert.equal(compatibility.baseline, pkg.dsh.verifiedDsh);
 assert.ok(compatibility.verifiedRuntimeVersions.includes(compatibility.baseline));
 assert.ok(compatibility.verifiedRuntimeVersions.every(version => /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version)));
-assert.equal(pkg.engines.dsh, compatibility.verifiedRuntimeVersions.join(' || '));
+// 安装范围由显式策略决定；实机验收名单独立维护，新增验收记录无需收窄范围。
+assert.equal(typeof compatibility.supportedRuntimeRange, 'string');
+assert.ok(compatibility.supportedRuntimeRange.trim());
+assert.equal(pkg.engines.dsh, compatibility.supportedRuntimeRange);
 for (const version of compatibility.verifiedRuntimeVersions.filter(version => version !== compatibility.baseline)) {
     const evidence = JSON.parse(await readFile(await localFile(`compatibility/runtime-${version}.json`), 'utf8'));
     assert.equal(evidence.passed, true);
     assert.equal(evidence.runtimeVerified, true);
     assert.equal(evidence.dsh, version);
-    assert.equal(evidence.plugin, pkg.version);
+    // 保留证据采集时真实的插件版本；旧验收记录不冒充当前发行版验收。
+    assert.match(evidence.plugin, /^\d+\.\d+\.\d+$/);
 }
 await localFile('docs/COMPATIBILITY.md');
 assert.deepEqual(Object.keys(pkg.dependencies ?? {}), []);
