@@ -1,6 +1,6 @@
 # 发布与升级指南
 
-公开包名为 `dsh-session-rollover`，当前源码版本 1.2.1，维护者 Oak-liuhj。仓库：[Oak-liuhj/dsh-session-rollover](https://github.com/Oak-liuhj/dsh-session-rollover)。支持在宿主中直接填写 npm 包名安装；市场收录不代替 npm 发布。实际公开版本以 npm 官方源和 GitHub Release 为准，发布核验记录见 [投稿材料](../marketplace/SUBMISSION.md)。
+公开包名为 `dsh-session-rollover`，npm 当前已发布版本为 1.2.1，维护者 Oak-liuhj。仓库：[Oak-liuhj/dsh-session-rollover](https://github.com/Oak-liuhj/dsh-session-rollover)。支持在宿主中直接填写 npm 包名安装；市场收录不代替 npm 发布。实际公开版本以 npm 官方源和 GitHub Release 为准，发布核验记录见 [投稿材料](../marketplace/SUBMISSION.md)。
 
 ## 构建与打包
 

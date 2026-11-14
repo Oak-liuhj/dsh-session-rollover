@@ -2,6 +2,8 @@
 
 ## 投稿记录
 
+2026-11-14 已提交 1.2.1 市场更新 PR：[awesome-dsh-plugin/awesome-dsh-plugin#15310](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/15310)。只更新现有条目的中英文简介，明确声明的 DSH 安装范围；正文区分安装范围与历史实测名单，并附 npm 发布及验证说明。分支为 `Oak-liuhj:codex/update-dsh-session-rollover-1-2-1`，提交为 `e152b33ff193d5393d874d4bca3d0f9bb346f4b5`。提交后检查为 open、无冲突、CI 运行中；合并和部署状态以实时页面为准。
+
 2026-11-11 已提交市场更新 PR：[awesome-dsh-plugin/awesome-dsh-plugin#14240](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/14240)。只修改现有条目的中英文简介，补充宿主兼容检查；正文说明 1.2.0 已发布及支持的 DSH 版本，并附真实宿主与远程 CI 证据。分支为 `Oak-liuhj:codex/update-dsh-session-rollover-1-2-0`，提交为 `5cd4d474f448a42fc2828978d6e215f9078447e8`。提交不代表已合并，npm/version 元数据仍由市场自动采集。
 
 2026-11-11 复核：首次收录 PR 已于 **2026-11-10 00:46:29 UTC** 合并，官方 main 的条目存在，在线 `plugins.json` 已包含本插件。市场条目指向本仓库，不锁定插件版本，后续发布无需重复投稿同名条目。
@@ -16,6 +18,17 @@
 - 校验与审核的实时状态以 PR 页面为准。提交 PR 不等于市场已收录；正式收录还需维护者合并及目录后续构建。
 
 ## npm 发布记录
+
+### 1.2.1
+
+2026-11-14，`dsh-session-rollover@1.2.1` 已发布至 [npm 官方源](https://www.npmjs.com/package/dsh-session-rollover/v/1.2.1)，`latest` 已核对为 `1.2.1`。声明范围为 `0.2.1-rc.5 || >=0.2.2-rc.1 <0.3.0-0`，GitHub main 已推送对应源码（发布前提交 `2bd84f453e13543f96131cc79fa4a6f8443893e9`）。
+
+- 实际下载的 npm tgz 与审核包一致，SHA256 为 `3a4f2cbba552aa2756ffd78eaa8a12adf83f1e74b713511816623fa3a9313777`，SHA1 为 `cc82f7d9a562bb9edef45ff0b6a2565613d3a29c`，SHA512 integrity 已核对。
+- 已按 `dsh-session-rollover@1.2.1` 从官方源隔离安装，核对版本、范围、默认/具名导出与发布资源。发布初期曾遇到 registry 元数据延迟，刷新元数据后安装验证通过。
+- 100 项本地回归与 17 项版本边界检查通过；[远程 CI 43606787186](https://github.com/Oak-liuhj/dsh-session-rollover/actions/runs/43606787186) 也已成功。DSH `0.2.2-rc.3` 十一个组件的公开声明检查通过；未将声明扫描或范围放宽写成完整 rc.3 实机验收。
+- 市场条目更新见 PR #15310；npm 发布成功不表示该 PR 已合并或市场已部署新简介。npm/version 关联仍由目录自动采集，不手填 YAML 字段。
+
+用户可填写包名 `dsh-session-rollover`，或执行 `dsh plugin --profile desktop add dsh-session-rollover@1.2.1`；升级后重启 DSH，保留原数据目录。
 
 ### 1.2.0
 
